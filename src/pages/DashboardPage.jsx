@@ -62,11 +62,23 @@ export default function DashboardPage() {
   ).sort((a, b) => b.revenue - a.revenue).slice(0, 5)
 
   const monthly = MONTH_KEYS.map((mk, i) => ({
-    label:   MONTHS[i],
-    qty:     rows.reduce((s, r) => s + Number(r[mk] || 0), 0),
-    revenue: rows.reduce((s, r) => s + Number(r[mk] || 0) * Number(r.avg_price_snapshot || 0), 0),
-  }))
-  const maxRevenue = Math.max(...monthly.map(m => m.revenue), 1)
+  label:   MONTHS[i],
+  qty:     rows.reduce((s, r) => s + Number(r[mk] || 0), 0),
+  revenue: rows.reduce((s, r) => {
+    const totalQty = Number(r.total_qty || 0)
+    const totalRev = Number(r.total_revenue || 0)
+    const monthQty = Number(r[mk] || 0)
+    if (totalQty === 0) return s
+    return s + (monthQty / totalQty) * totalRev
+  }, 0),
+}))
+const maxRevenue = Math.max(...monthly.map(m => m.revenue), 1)
+
+console.log('monthly revenues:', monthly.map(m => m.revenue))
+
+console.log('monthly:', monthly)
+console.log('maxRevenue:', maxRevenue)
+console.log('rows count:', rows.length)
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -88,26 +100,41 @@ export default function DashboardPage() {
         <KpiCard icon={Tag}        label="Listini attivi"     value={priceLists.length}      sub="combinazioni"   color="bg-amber-500" />
       </div>
 
-      {/* Grafico mensile */}
-      <div className="card p-5 mb-6">
-        <h2 className="text-sm font-medium text-gray-700 mb-4">Andamento mensile — fatturato {year}</h2>
-        {isLoading ? (
-          <div className="h-32 flex items-center justify-center text-gray-400 text-sm">Caricamento…</div>
-        ) : (
-          <div className="flex items-end gap-1.5 h-32">
-            {monthly.map(m => (
-              <div key={m.label} className="flex-1 flex flex-col items-center gap-1">
-                <div
-                  className="w-full bg-brand-500 rounded-t transition-all"
-                  style={{ height: `${Math.max((m.revenue / maxRevenue) * 100, m.revenue > 0 ? 4 : 0)}%`, minHeight: m.revenue > 0 ? '4px' : '0' }}
-                  title={fmtEur(m.revenue)}
-                />
-                <span className="text-xs text-gray-400">{m.label}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+     {/* Grafico mensile */}
+<div className="card p-5 mb-6">
+  <h2 className="text-sm font-medium text-gray-700 mb-4">Andamento mensile — fatturato {year}</h2>
+  {isLoading ? (
+    <div className="h-48 flex items-center justify-center text-gray-400 text-sm">Caricamento…</div>
+  ) : (
+    <div className="flex items-end gap-1.5" style={{ height: '160px' }}>
+      {MONTH_KEYS.map((mk, i) => {
+        const rev = rows.reduce((s, r) => {
+          const tq = Number(r.total_qty || 0)
+          const tr = Number(r.total_revenue || 0)
+          const mq = Number(r[mk] || 0)
+          return s + (tq > 0 ? (mq / tq) * tr : 0)
+        }, 0)
+        const allRevs = MONTH_KEYS.map(k => rows.reduce((s, r) => {
+          const tq = Number(r.total_qty || 0)
+          const tr = Number(r.total_revenue || 0)
+          const mq = Number(r[k] || 0)
+          return s + (tq > 0 ? (mq / tq) * tr : 0)
+        }, 0))
+        const maxRev = Math.max(...allRevs, 1)
+        const barH = rev > 0 ? Math.max((rev / maxRev) * 130, 8) : 0
+        return (
+          <div key={mk} className="flex-1 flex flex-col items-center justify-end gap-1">
+  {rev > 0 && <span style={{ fontSize: '9px', color: '#6b7280', marginBottom: '2px' }}>{fmtEur(rev)}</span>}
+  <div
+    style={{ height: `${barH}px`, backgroundColor: '#6366f1', borderRadius: '4px 4px 0 0', width: '100%' }}
+  />
+  <span className="text-xs text-gray-400">{MONTHS[i]}</span>
+</div>
+        )
+      })}
+    </div>
+  )}
+</div>
 
       {/* Top clienti + Top prodotti */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
