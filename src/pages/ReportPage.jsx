@@ -147,11 +147,10 @@ export default function ReportPage() {
   async function handleCellSave(row, monthIndex, qty) {
     await upsertLine.mutateAsync({
       year,
-      customer_id: row.customer_id,
-      product_id:  row.product_id,
-      month:       monthIndex + 1,
-      qty_pieces:  qty,
-      avg_price:   row.avg_price_snapshot,
+      product_id: row.product_id,
+      month:      monthIndex + 1,
+      qty_pieces: qty,
+      avg_price:  row.avg_price_snapshot,
     })
   }
 
