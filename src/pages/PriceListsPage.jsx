@@ -6,7 +6,7 @@ import { useProducts } from '../hooks/useProducts'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 
-const EMPTY_FORM = { customer_id: '', product_id: '', avg_price: '' }
+const EMPTY_FORM = { customer_id: '', product_id: '', avg_price: '', selectedProducts: [], productSearch: '' }
 
 function fmt(n) {
   return Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
@@ -60,15 +60,33 @@ export default function PriceListsPage() {
   async function handleSubmit(e) {
     e.preventDefault()
     setFormError('')
-    if (!form.customer_id)              return setFormError('Seleziona un cliente.')
-    if (!form.product_id)               return setFormError('Seleziona un prodotto.')
-    if (!form.avg_price || Number(form.avg_price) <= 0)
-                                        return setFormError('Inserisci un prezzo valido (> 0).')
-    try {
-      await upsert.mutateAsync({ ...form, avg_price: Number(form.avg_price) })
-      setModalOpen(false)
-    } catch (err) {
-      setFormError('Errore nel salvataggio. Riprova.')
+    if (!form.customer_id) return setFormError('Seleziona un cliente.')
+    if (!form.avg_price || Number(form.avg_price) <= 0) return setFormError('Inserisci un prezzo valido (> 0).')
+
+    if (form.id) {
+      // Modifica singola
+      try {
+        await upsert.mutateAsync({ ...form, avg_price: Number(form.avg_price) })
+        setModalOpen(false)
+      } catch {
+        setFormError('Errore nel salvataggio. Riprova.')
+      }
+    } else {
+      // Inserimento multiplo
+      const selectedIds = form.selectedProducts || []
+      if (selectedIds.length === 0) return setFormError('Seleziona almeno un prodotto.')
+      try {
+        for (const product_id of selectedIds) {
+          await upsert.mutateAsync({
+            customer_id: form.customer_id,
+            product_id,
+            avg_price: Number(form.avg_price),
+          })
+        }
+        setModalOpen(false)
+      } catch {
+        setFormError('Errore nel salvataggio. Riprova.')
+      }
     }
   }
 
@@ -220,16 +238,17 @@ export default function PriceListsPage() {
         <Modal
           title={form.id ? 'Modifica listino' : 'Nuovo listino'}
           onClose={() => setModalOpen(false)}
+          wide={!form.id}
         >
           <form onSubmit={handleSubmit} className="space-y-4">
 
             {/* Cliente */}
-            <div className="max-w-5xl mx-auto">
+            <div>
               <label className="label">Cliente</label>
               <select
                 className="input"
                 value={form.customer_id}
-                onChange={e => setForm(f => ({ ...f, customer_id: e.target.value }))}
+                onChange={e => setForm(f => ({ ...f, customer_id: e.target.value, selectedProducts: [] }))}
                 disabled={!!form.id}
               >
                 <option value="">— Seleziona cliente —</option>
@@ -239,27 +258,75 @@ export default function PriceListsPage() {
               </select>
             </div>
 
-            {/* Prodotto */}
-            <div className="max-w-5xl mx-auto">
-              <label className="label">Prodotto</label>
-              <select
-                className="input"
-                value={form.product_id}
-                onChange={e => setForm(f => ({ ...f, product_id: e.target.value }))}
-                disabled={!!form.id}
-              >
-                <option value="">— Seleziona prodotto —</option>
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>{p.description} — {p.ean}</option>
-                ))}
-              </select>
-              {form.id && (
-                <p className="text-xs text-gray-400 mt-1">Cliente e prodotto non modificabili. Crea un nuovo listino per cambiare la combinazione.</p>
-              )}
-            </div>
+            {/* Prodotto — singolo in modifica, multi in inserimento */}
+            {form.id ? (
+              <div>
+                <label className="label">Prodotto</label>
+                <select className="input" value={form.product_id} disabled>
+                  {products.map(p => (
+                    <option key={p.id} value={p.id}>{p.description} — {p.ean}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">Cliente e prodotto non modificabili.</p>
+              </div>
+            ) : (
+              <div>
+                <label className="label">
+                  Prodotti
+                  {form.selectedProducts?.length > 0 && (
+                    <span className="ml-2 text-xs text-brand-600 font-normal">{form.selectedProducts.length} selezionati</span>
+                  )}
+                </label>
+                {/* Cerca */}
+                <div className="relative mb-1.5">
+                  <input
+                    type="text"
+                    className="input pl-8 text-xs"
+                    placeholder="Cerca prodotto, EAN…"
+                    value={form.productSearch || ''}
+                    onChange={e => setForm(f => ({ ...f, productSearch: e.target.value }))}
+                  />
+                  <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                </div>
+                <div className="border border-gray-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-50">
+                  {products
+                    .filter(p => {
+                      const q = (form.productSearch || '').toLowerCase()
+                      return !q || p.description.toLowerCase().includes(q) || p.ean.includes(q)
+                    })
+                    .map(p => (
+                      <label key={p.id} className={`flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50 transition-colors ${(form.selectedProducts || []).includes(p.id) ? 'bg-brand-50' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={(form.selectedProducts || []).includes(p.id)}
+                          onChange={() => setForm(f => {
+                            const sel = f.selectedProducts || []
+                            return { ...f, selectedProducts: sel.includes(p.id) ? sel.filter(id => id !== p.id) : [...sel, p.id] }
+                          })}
+                          className="rounded border-gray-300 shrink-0"
+                        />
+                        <span className="text-sm text-gray-900 flex-1">{p.description}</span>
+                        <span className="text-xs text-gray-400 font-mono">{p.ean}</span>
+                      </label>
+                    ))
+                  }
+                </div>
+                <div className="flex gap-2 mt-1.5">
+                  <button type="button" className="text-xs text-brand-600 hover:underline"
+                    onClick={() => setForm(f => ({ ...f, selectedProducts: products.map(p => p.id) }))}>
+                    Seleziona tutti
+                  </button>
+                  <span className="text-gray-300">·</span>
+                  <button type="button" className="text-xs text-gray-400 hover:underline"
+                    onClick={() => setForm(f => ({ ...f, selectedProducts: [] }))}>
+                    Deseleziona tutti
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Prezzo */}
-            <div className="max-w-5xl mx-auto">
+            <div>
               <label className="label">Listino medio (€)</label>
               <input
                 className="input"
@@ -286,7 +353,7 @@ export default function PriceListsPage() {
               <button type="submit" className="btn-primary" disabled={upsert.isPending}>
                 {upsert.isPending
                   ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  : form.id ? 'Salva modifiche' : 'Crea listino'
+                  : form.id ? 'Salva modifiche' : `Crea listino${(form.selectedProducts?.length || 0) > 1 ? ` (${form.selectedProducts.length} prodotti)` : ''}`
                 }
               </button>
             </div>

@@ -1,10 +1,11 @@
-import { useState } from 'react'
+
 import { Plus, Trash2, Copy, Pencil } from 'lucide-react'
 import { useRotations, useProductsWithRotationInfo, useCreateRotation, useUpdateRotation, useDeleteRotation } from '../hooks/useRotations'
 import { useCustomers } from '../hooks/useCustomers'
 import { useSettings } from '../hooks/useSettings'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
+import { useState, useEffect } from 'react'
 
 const FREQUENCY_LABELS = {
   monthly:       'Mensile',
@@ -36,15 +37,27 @@ function RotationModal({ mode, initialData, onClose, onSave }) {
   const { data: settings } = useSettings()
   const { data: customers = [] } = useCustomers()
 
-  const [form, setForm] = useState({
-    customer_id:    initialData?.customer_id    || '',
-    num_points:     initialData?.num_points      || '',
-    rotation_value: initialData?.rotation_value  || settings?.default_rotation || '',
-    frequency:      initialData?.frequency       || 'bimonthly',
-    period_start:   initialData?.period_start    || settings?.period_start || '',
-    period_end:     initialData?.period_end      || settings?.period_end   || '',
-    notes:          initialData?.notes           || '',
-  })
+ const [form, setForm] = useState({
+  customer_id:    initialData?.customer_id    || '',
+  num_points:     initialData?.num_points      || '',
+  rotation_value: initialData?.rotation_value  || '',
+  frequency:      initialData?.frequency       || 'bimonthly',
+  period_start:   initialData?.period_start    || '',
+  period_end:     initialData?.period_end      || '',
+  notes:          initialData?.notes           || '',
+})
+
+// Aggiorna il form quando i settings arrivano (solo se non ci sono dati iniziali)
+useEffect(() => {
+  if (settings && !initialData) {
+    setForm(f => ({
+      ...f,
+      rotation_value: f.rotation_value || settings.default_rotation || '',
+      period_start:   f.period_start   || settings.period_start     || '',
+      period_end:     f.period_end     || settings.period_end       || '',
+    }))
+  }
+}, [settings])
   const [selectedProducts, setSelectedProducts] = useState(
     initialData?.products?.map(p => p.product_id) || []
   )
