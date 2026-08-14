@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Plus, Search, Pencil, PowerOff, Power } from 'lucide-react'
-import { usePriceLists, useUpsertPriceList, useTogglePriceListActive } from '../hooks/usePriceLists'
+import { Plus, Search, Pencil, PowerOff, Power, RefreshCw } from 'lucide-react'
+import { usePriceLists, useUpsertPriceList, useTogglePriceListActive, useBulkUpdatePriceList } from '../hooks/usePriceLists'
 import { useCustomers } from '../hooks/useCustomers'
 import { useProducts } from '../hooks/useProducts'
 import Modal from '../components/ui/Modal'
@@ -16,14 +16,19 @@ export default function PriceListsPage() {
   const [search, setSearch]             = useState('')
   const [showInactive, setShowInactive] = useState(false)
   const [modalOpen, setModalOpen]       = useState(false)
+  const [bulkModalOpen, setBulkModalOpen] = useState(false)
   const [form, setForm]                 = useState(EMPTY_FORM)
   const [formError, setFormError]       = useState('')
+  const [bulkForm, setBulkForm]         = useState({ customer_id: '', avg_price: '' })
+  const [bulkError, setBulkError]       = useState('')
+  const [bulkDone, setBulkDone]         = useState(false)
 
   const { data: priceLists = [], isLoading } = usePriceLists({ includeInactive: showInactive })
   const { data: customers = [] }             = useCustomers()
   const { data: products = [] }              = useProducts()
-  const upsert = useUpsertPriceList()
-  const toggle = useTogglePriceListActive()
+  const upsert      = useUpsertPriceList()
+  const toggle      = useTogglePriceListActive()
+  const bulkUpdate  = useBulkUpdatePriceList()
 
   const filtered = priceLists.filter(pl => {
     const q = search.toLowerCase()
@@ -71,15 +76,45 @@ export default function PriceListsPage() {
     await toggle.mutateAsync({ id: pl.id, active: !pl.active })
   }
 
+  async function handleBulkSubmit(e) {
+    e.preventDefault()
+    setBulkError('')
+    setBulkDone(false)
+    if (!bulkForm.customer_id) return setBulkError('Seleziona un cliente.')
+    if (!bulkForm.avg_price || Number(bulkForm.avg_price) <= 0) return setBulkError('Inserisci un prezzo valido (> 0).')
+
+    // Conta quanti listini verranno aggiornati
+    const count = priceLists.filter(pl => String(pl.customer_id) === bulkForm.customer_id).length
+    if (count === 0) return setBulkError('Nessun listino attivo trovato per questo cliente.')
+
+    if (!confirm(`Aggiornare il listino di ${count} prodotti per questo cliente a € ${Number(bulkForm.avg_price).toFixed(4)}?`)) return
+
+    try {
+      await bulkUpdate.mutateAsync({
+        customer_id: Number(bulkForm.customer_id),
+        avg_price:   Number(bulkForm.avg_price),
+      })
+      setBulkDone(true)
+      setTimeout(() => { setBulkModalOpen(false); setBulkDone(false); setBulkForm({ customer_id: '', avg_price: '' }) }, 1500)
+    } catch {
+      setBulkError('Errore durante l\'aggiornamento. Riprova.')
+    }
+  }
+
   return (
     <div className="max-w-5xl mx-auto">
       <PageHeader
         title="Listini medi"
         description="Prezzi medi per combinazione cliente + prodotto"
         action={
-          <button className="btn-primary" onClick={openNew}>
-            <Plus size={16} /> Nuovo listino
-          </button>
+          <div className="flex gap-2">
+            <button className="btn-secondary" onClick={() => { setBulkModalOpen(true); setBulkError(''); setBulkDone(false) }}>
+              <RefreshCw size={15} /> Aggiorna listino
+            </button>
+            <button className="btn-primary" onClick={openNew}>
+              <Plus size={16} /> Nuovo listino
+            </button>
+          </div>
         }
       />
 
@@ -252,6 +287,65 @@ export default function PriceListsPage() {
                 {upsert.isPending
                   ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   : form.id ? 'Salva modifiche' : 'Crea listino'
+                }
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Modal aggiornamento massivo listino */}
+      {bulkModalOpen && (
+        <Modal title="Aggiorna listino cliente" onClose={() => setBulkModalOpen(false)}>
+          <form onSubmit={handleBulkSubmit} className="space-y-4">
+            <div>
+              <label className="label">Cliente</label>
+              <select
+                className="input"
+                value={bulkForm.customer_id}
+                onChange={e => setBulkForm(f => ({ ...f, customer_id: e.target.value }))}
+                autoFocus
+              >
+                <option value="">— Seleziona cliente —</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>{c.company_name}</option>
+                ))}
+              </select>
+              {bulkForm.customer_id && (
+                <p className="text-xs text-gray-400 mt-1">
+                  {priceLists.filter(pl => String(pl.customer_id) === bulkForm.customer_id).length} listini attivi verranno aggiornati.
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="label">Nuovo listino medio (€)</label>
+              <input
+                className="input"
+                type="number"
+                step="0.0001"
+                min="0.0001"
+                placeholder="es. 4.5000"
+                value={bulkForm.avg_price}
+                onChange={e => setBulkForm(f => ({ ...f, avg_price: e.target.value }))}
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Questo valore sostituirà il listino medio di tutti i prodotti attivi del cliente selezionato.
+              </p>
+            </div>
+
+            {bulkError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{bulkError}</p>
+            )}
+            {bulkDone && (
+              <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">✓ Listini aggiornati con successo.</p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" className="btn-secondary" onClick={() => setBulkModalOpen(false)}>Annulla</button>
+              <button type="submit" className="btn-primary" disabled={bulkUpdate.isPending}>
+                {bulkUpdate.isPending
+                  ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : 'Aggiorna tutti i listini'
                 }
               </button>
             </div>

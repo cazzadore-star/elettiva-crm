@@ -46,7 +46,6 @@ export function useUpsertPriceList() {
   return useMutation({
     mutationFn: async (pl) => {
       if (pl.id) {
-        // modifica esistente
         const { data, error } = await supabase
           .from('price_lists')
           .update({ avg_price: pl.avg_price, active: pl.active })
@@ -55,21 +54,15 @@ export function useUpsertPriceList() {
         if (error) throw error
         return data
       } else {
-        // nuovo: prima disattiva eventuale listino attivo per la stessa coppia
         await supabase
           .from('price_lists')
           .update({ active: false })
           .eq('customer_id', pl.customer_id)
           .eq('product_id', pl.product_id)
           .eq('active', true)
-
         const { data, error } = await supabase
           .from('price_lists')
-          .insert({
-            customer_id: pl.customer_id,
-            product_id:  pl.product_id,
-            avg_price:   pl.avg_price,
-          })
+          .insert({ customer_id: pl.customer_id, product_id: pl.product_id, avg_price: pl.avg_price })
           .select().single()
         if (error) throw error
         return data
@@ -87,6 +80,21 @@ export function useTogglePriceListActive() {
         .from('price_lists')
         .update({ active })
         .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+  })
+}
+
+export function useBulkUpdatePriceList() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ customer_id, avg_price }) => {
+      const { error } = await supabase
+        .from('price_lists')
+        .update({ avg_price })
+        .eq('customer_id', customer_id)
+        .eq('active', true)
       if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
