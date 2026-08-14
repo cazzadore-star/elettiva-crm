@@ -2,7 +2,8 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import {
   LayoutDashboard, Package, Users, Tag,
-  BarChart2, FileText, LogOut, Zap
+  BarChart2, FileText, LogOut, Zap,
+  RefreshCw, Archive, Settings
 } from 'lucide-react'
 
 const NAV = [
@@ -10,8 +11,11 @@ const NAV = [
   { to: '/products',   label: 'Prodotti',      icon: Package },
   { to: '/customers',  label: 'Clienti',       icon: Users },
   { to: '/pricelists', label: 'Listini medi',  icon: Tag },
+  { to: '/rotations',  label: 'Rotazioni',     icon: RefreshCw },
   { to: '/forecast',   label: 'Forecast',      icon: BarChart2 },
   { to: '/report',     label: 'Report',        icon: FileText },
+  { to: '/archive',    label: 'Archivio',      icon: Archive },
+  { to: '/settings',   label: 'Impostazioni',  icon: Settings },
 ]
 
 export default function Layout() {

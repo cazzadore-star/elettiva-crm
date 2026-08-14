@@ -4,13 +4,15 @@ import { useForecastPivot, useCreateForecastHeader, useUpdateForecastLine, useDe
 import { useCustomers } from '../hooks/useCustomers'
 import { useProducts } from '../hooks/useProducts'
 import { useActivePriceForPair } from '../hooks/usePriceLists'
+import { useCategories } from '../hooks/useCategories'
+import { useRotations } from '../hooks/useRotations'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 
 const MONTHS = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
 const MONTH_KEYS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
 const CURRENT_YEAR = new Date().getFullYear()
-const YEARS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 1 + i)
+/* const YEARS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 1 + i) */
 
 function fmt(n) {
   if (!n && n !== 0) return '—'
@@ -153,8 +155,12 @@ export default function ForecastPage() {
   const [filterProduct, setFilterProduct]   = useState('')
   const [sortCol, setSortCol]               = useState('')
   const [sortDir, setSortDir]               = useState('asc')
+  const [filterCategory, setFilterCategory] = useState('')
+  const [filterRotation, setFilterRotation] = useState('')
 
   const { data: rows = [], isLoading } = useForecastPivot(year)
+  const { data: categories = [] }      = useCategories()
+  const { data: rotations = [] }       = useRotations()
   const updateLine                     = useUpdateForecastLine()
   const deleteHeader                   = useDeleteForecastHeader()
 
@@ -163,15 +169,38 @@ export default function ForecastPage() {
     else { setSortCol(col); setSortDir('asc') }
   }
 
+  // Costruisce set di product_id dalla rotazione selezionata
+  const rotationProductIds = useMemo(() => {
+    if (!filterRotation) return null
+    const rot = rotations.find(r => String(r.id) === filterRotation)
+    if (!rot) return null
+    return new Set(rot.products.map(p => p.product_id))
+  }, [filterRotation, rotations])
+
+  // Mappa product_id -> category_id dalla forecast_pivot
+  // La pivot ha product_id, lo usiamo per filtrare per categoria
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     return rows.filter(r => {
       if (filterCustomer && r.company_name        !== filterCustomer) return false
       if (filterProduct  && r.product_description !== filterProduct)  return false
-      if (q && ![r.company_name, r.product_description, r.ean].some(v => (v||'').toLowerCase().includes(q))) return false
+      if (q) {
+  const words = q.split(/\s+/).filter(Boolean)
+  const text = [r.company_name, r.product_description, r.ean].join(' ').toLowerCase()
+  if (!words.every(w => text.includes(w))) return false
+}
+      // Filtro categoria: confronta con category_id del prodotto
+      if (filterCategory && String(r.category_id) !== filterCategory) return false
+      // Filtro rotazione: mostra solo cliente+prodotti della rotazione
+      if (rotationProductIds) {
+        const rot = rotations.find(r2 => String(r2.id) === filterRotation)
+        if (!rot) return false
+        if (r.company_name !== rot.company_name) return false
+        if (!rotationProductIds.has(r.product_id)) return false
+      }
       return true
     })
-  }, [rows, search, filterCustomer, filterProduct])
+  }, [rows, search, filterCustomer, filterProduct, filterCategory, rotationProductIds])
 
   const sorted = useMemo(() => sortRows(filtered, sortCol, sortDir), [filtered, sortCol, sortDir])
 
@@ -197,7 +226,7 @@ export default function ForecastPage() {
     <div>
       <PageHeader
         title="Forecast"
-        description="Previsioni di vendita annuali per cliente e prodotto"
+        description="Previsioni di vendita per cliente e prodotto"
         action={
           <button className="btn-primary" onClick={() => setModalOpen(true)}>
             <Plus size={16} /> Aggiungi riga
@@ -207,12 +236,12 @@ export default function ForecastPage() {
 
       {/* Filtri */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <div className="relative">
+        {/* <div className="relative">
           <select className="input pr-8 appearance-none font-medium" value={year} onChange={e => setYear(Number(e.target.value))}>
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-        </div>
+        </div> */}
 
         {/* Cerca generico */}
         <div className="relative">
@@ -225,17 +254,29 @@ export default function ForecastPage() {
           />
         </div>
 
-        <select className="input max-w-xs" value={filterCustomer} onChange={e => setFilterCustomer(e.target.value)}>
+        <select className="input max-w-44" value={filterCustomer} onChange={e => setFilterCustomer(e.target.value)}>
           <option value="">Tutti i clienti</option>
           {[...new Set(rows.map(r => r.company_name))].sort().map(n => <option key={n} value={n}>{n}</option>)}
         </select>
-        <select className="input max-w-xs" value={filterProduct} onChange={e => setFilterProduct(e.target.value)}>
+        <select className="input max-w-44" value={filterProduct} onChange={e => setFilterProduct(e.target.value)}>
           <option value="">Tutti i prodotti</option>
           {[...new Set(rows.map(r => r.product_description))].sort().map(n => <option key={n} value={n}>{n}</option>)}
         </select>
+        <select className="input max-w-44" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+          <option value="">Tutte le categorie</option>
+          {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+        </select>
+        <select className="input max-w-44" value={filterRotation} onChange={e => { setFilterRotation(e.target.value); setFilterCustomer(''); setFilterProduct('') }}>
+          <option value="">Tutte le rotazioni</option>
+          {rotations.map(r => (
+            <option key={r.id} value={String(r.id)}>
+              {r.company_name} — {new Date(r.period_start).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })} / {r.product_count} prodotti
+            </option>
+          ))}
+        </select>
 
-        {(search || filterCustomer || filterProduct) && (
-          <button className="text-sm text-gray-400 hover:text-gray-600" onClick={() => { setSearch(''); setFilterCustomer(''); setFilterProduct('') }}>
+        {(search || filterCustomer || filterProduct || filterCategory || filterRotation) && (
+          <button className="text-sm text-gray-400 hover:text-gray-600" onClick={() => { setSearch(''); setFilterCustomer(''); setFilterProduct(''); setFilterCategory(''); setFilterRotation('') }}>
             Pulisci filtri
           </button>
         )}

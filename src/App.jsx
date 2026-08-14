@@ -8,6 +8,9 @@ import CustomersPage from './pages/CustomersPage'
 import PriceListsPage from './pages/PriceListsPage'
 import ForecastPage from './pages/ForecastPage'
 import ReportPage from './pages/ReportPage'
+import RotationsPage from './pages/RotationsPage'
+import SettingsPage from './pages/SettingsPage'
+import ArchivePage from './pages/ArchivePage'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -30,12 +33,15 @@ export default function App() {
           </PrivateRoute>
         }>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard"   element={<DashboardPage />} />
-          <Route path="products"    element={<ProductsPage />} />
-          <Route path="customers"   element={<CustomersPage />} />
-          <Route path="pricelists"  element={<PriceListsPage />} />
-          <Route path="forecast"    element={<ForecastPage />} />
-          <Route path="report"      element={<ReportPage />} />
+          <Route path="dashboard"  element={<DashboardPage />} />
+          <Route path="products"   element={<ProductsPage />} />
+          <Route path="customers"  element={<CustomersPage />} />
+          <Route path="pricelists" element={<PriceListsPage />} />
+          <Route path="forecast"   element={<ForecastPage />} />
+          <Route path="rotations"  element={<RotationsPage />} />
+          <Route path="report"     element={<ReportPage />} />
+          <Route path="archive"    element={<ArchivePage />} />
+          <Route path="settings"   element={<SettingsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
