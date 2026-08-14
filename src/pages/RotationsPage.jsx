@@ -64,6 +64,16 @@ function RotationModal({ mode, initialData, onClose, onSave }) {
     )
   }
 
+  const [productSearch, setProductSearch] = useState('')
+
+  const filteredProducts = products.filter(p => {
+    if (!productSearch) return true
+    const q = productSearch.toLowerCase()
+    return p.description.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q) || p.ean.includes(q)
+  })
+
+  
+
   const titles = { new: 'Nuova rotazione', edit: 'Modifica rotazione', duplicate: 'Duplica rotazione' }
 
   async function handleSubmit(e) {
@@ -101,33 +111,28 @@ function RotationModal({ mode, initialData, onClose, onSave }) {
   }
 
   return (
-    <Modal title={titles[mode]} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+   <Modal title={titles[mode]} onClose={onClose} wide>
+      <form onSubmit={handleSubmit} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1" style={{ minWidth: '720px' }}>
 
-        {/* Cliente */}
-        <div>
-          <label className="label">Cliente</label>
-          <select
-            className="input"
-            value={form.customer_id}
-            onChange={e => { setForm(f => ({ ...f, customer_id: e.target.value })); setSelectedProducts([]) }}
-            disabled={mode === 'edit'}
-          >
-            <option value="">— Seleziona cliente —</option>
-            {customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
-          </select>
-          {mode === 'edit' && (
-            <p className="text-xs text-gray-400 mt-1">Il cliente non è modificabile. Duplica la rotazione per cambiarlo.</p>
-          )}
-        </div>
-
-        {/* Num punti vendita + rotazione */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Riga 1: Cliente | Punti vendita | Rotazione */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-1">
+            <label className="label">Cliente</label>
+            <select
+              className="input"
+              value={form.customer_id}
+              onChange={e => { setForm(f => ({ ...f, customer_id: e.target.value })); setSelectedProducts([]) }}
+              disabled={mode === 'edit'}
+            >
+              <option value="">— Seleziona —</option>
+              {customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+            </select>
+            {mode === 'edit' && <p className="text-xs text-gray-400 mt-1">Non modificabile.</p>}
+          </div>
           <div>
             <label className="label">Punti vendita</label>
             <input
-              type="number" min="1" step="1"
-              className="input"
+              type="number" min="1" step="1" className="input"
               placeholder="es. 100"
               value={form.num_points}
               onChange={e => setForm(f => ({ ...f, num_points: e.target.value }))}
@@ -136,8 +141,7 @@ function RotationModal({ mode, initialData, onClose, onSave }) {
           <div>
             <label className="label">Rotazione (pz/pdv)</label>
             <input
-              type="number" min="0.1" step="0.1"
-              className="input"
+              type="number" min="0.1" step="0.1" className="input"
               placeholder="es. 2.5"
               value={form.rotation_value}
               onChange={e => setForm(f => ({ ...f, rotation_value: e.target.value }))}
@@ -145,50 +149,28 @@ function RotationModal({ mode, initialData, onClose, onSave }) {
           </div>
         </div>
 
-        {/* Periodo */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Riga 2: Inizio | Fine | Periodicità */}
+        <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="label">Inizio periodo</label>
-            <input
-              type="date" className="input"
-              value={form.period_start}
-              onChange={e => setForm(f => ({ ...f, period_start: e.target.value }))}
-            />
+            <input type="date" className="input" value={form.period_start}
+              onChange={e => setForm(f => ({ ...f, period_start: e.target.value }))} />
           </div>
           <div>
             <label className="label">Fine periodo</label>
-            <input
-              type="date" className="input"
-              value={form.period_end}
-              onChange={e => setForm(f => ({ ...f, period_end: e.target.value }))}
-            />
+            <input type="date" className="input" value={form.period_end}
+              onChange={e => setForm(f => ({ ...f, period_end: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label">Periodicità</label>
+            <select className="input" value={form.frequency} onChange={e => setForm(f => ({ ...f, frequency: e.target.value }))}>
+              <option value="monthly">Mensile</option>
+              <option value="bimonthly">Bimestrale</option>
+              <option value="quarterly">Trimestrale</option>
+              <option value="quadrimestral">Quadrimestrale</option>
+            </select>
           </div>
         </div>
-
-        {/* Frequenza */}
-        <div>
-          <label className="label">Periodicità</label>
-          <select className="input" value={form.frequency} onChange={e => setForm(f => ({ ...f, frequency: e.target.value }))}>
-            <option value="monthly">Mensile</option>
-            <option value="bimonthly">Bimestrale</option>
-            <option value="quarterly">Trimestrale</option>
-            <option value="quadrimestral">Quadrimestrale</option>
-          </select>
-        </div>
-
-        {/* Preview mesi + pezzi */}
-        {previewMonths.length > 0 && piecesPerPeriod > 0 && (
-          <div className="bg-brand-50 border border-brand-200 rounded-lg px-3 py-2.5 text-sm">
-            <p className="font-medium text-brand-700 mb-1">Anteprima ordini:</p>
-            <div className="flex flex-wrap gap-2">
-              {previewMonths.map(m => (
-                <span key={m} className="inline-flex items-center gap-1 bg-white border border-brand-200 rounded px-2 py-0.5 text-xs text-brand-800">
-                  {m} <span className="font-semibold">{piecesPerPeriod.toLocaleString('it-IT')} pz</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Prodotti */}
         {form.customer_id && (
@@ -199,14 +181,24 @@ function RotationModal({ mode, initialData, onClose, onSave }) {
                 <span className="ml-2 text-xs text-brand-600 font-normal">{selectedProducts.length} selezionati</span>
               )}
             </label>
+            <div className="relative mb-1.5">
+              <input
+                type="text"
+                className="input pl-8 text-xs"
+                placeholder="Cerca prodotto, SKU, EAN…"
+                value={productSearch}
+                onChange={e => setProductSearch(e.target.value)}
+              />
+              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            </div>
             <div className="border border-gray-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-50">
-              {products.length === 0 ? (
-                <p className="text-sm text-gray-400 px-3 py-4 text-center">Nessun prodotto disponibile.</p>
-              ) : products.map(p => (
+              {filteredProducts.length === 0 ? (
+                <p className="text-sm text-gray-400 px-3 py-4 text-center">Nessun prodotto trovato.</p>
+              ) : filteredProducts.map(p => (
                 <label
                   key={p.id}
                   className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors ${
-                    p.inRotation && !selectedProducts.includes(p.id) ? 'bg-orange-100' : 'hover:bg-gray-50'
+                    p.inRotation && !selectedProducts.includes(p.id) ? 'bg-orange-50' : 'hover:bg-gray-50'
                   } ${selectedProducts.includes(p.id) ? 'bg-brand-50' : ''}`}
                 >
                   <input
@@ -220,7 +212,7 @@ function RotationModal({ mode, initialData, onClose, onSave }) {
                     {p.sku && <span className="text-xs text-gray-400 ml-1.5">{p.sku}</span>}
                   </div>
                   {p.inRotation && !selectedProducts.includes(p.id) && (
-                    <span className="text-xs bg-orange-200 text-amber-700 px-1.5 py-0.5 rounded shrink-0">
+                    <span className="text-xs bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded shrink-0">
                       {p.rotationPeriod}
                     </span>
                   )}
