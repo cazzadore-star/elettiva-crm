@@ -18,6 +18,20 @@ export function useForecastPivot(year) {
   })
 }
 
+export function useForecastPivotAll() {
+  return useQuery({
+    queryKey: [KEY, 'pivot', 'all'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('forecast_pivot')
+        .select('*')
+        .order('company_name', { ascending: true })
+      if (error) throw error
+      return data
+    },
+  })
+}
+
 export function useForecastHeader(year, customerId, productId) {
   return useQuery({
     queryKey: [KEY, 'header', year, customerId, productId],

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
-import { Plus, Trash2, AlertTriangle, ChevronDown, ChevronUp, ChevronsUpDown, Search } from 'lucide-react'
-import { useForecastPivot, useCreateForecastHeader, useUpdateForecastLine, useDeleteForecastHeader } from '../hooks/useForecast'
+import { Plus, Trash2, AlertTriangle, ChevronUp, ChevronsUpDown, ChevronDown, Search } from 'lucide-react'
+import { useForecastPivotAll, useCreateForecastHeader, useUpdateForecastLine, useDeleteForecastHeader } from '../hooks/useForecast'
 import { useCustomers } from '../hooks/useCustomers'
 import { useProducts } from '../hooks/useProducts'
 import { useActivePriceForPair } from '../hooks/usePriceLists'
@@ -9,10 +9,10 @@ import { useRotations } from '../hooks/useRotations'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 
-const MONTHS = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
-const MONTH_KEYS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+const MONTH_KEYS   = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+const MONTHS_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
 const CURRENT_YEAR = new Date().getFullYear()
-const YEARS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 1 + i) 
+const YEARS        = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 1 + i)
 
 function fmt(n) {
   if (!n && n !== 0) return '—'
@@ -21,6 +21,24 @@ function fmt(n) {
 function fmtEur(n) {
   if (!n && n !== 0) return '—'
   return '€ ' + Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+// Genera lista di {year, month, key, label} per un range continuo
+function buildMonthRange(startYear, startMonth, endYear, endMonth) {
+  const cols = []
+  let y = startYear, m = startMonth
+  while (y < endYear || (y === endYear && m <= endMonth)) {
+    cols.push({ year: y, month: m, key: MONTH_KEYS[m - 1], label: `${MONTHS_SHORT[m - 1]} ${String(y).slice(2)}` })
+    m++
+    if (m > 12) { m = 1; y++ }
+  }
+  return cols
+}
+
+// Lookup valore da rows indicizzato per (header_id -> row) e col
+function getVal(rowsByHeader, headerId, monthKey) {
+  const row = rowsByHeader[headerId]
+  return row ? Number(row[monthKey] || 0) : 0
 }
 
 function SortIcon({ col, sortCol, sortDir }) {
@@ -71,10 +89,12 @@ function EditableCell({ value, onSave }) {
   )
 }
 
-function AddForecastRow({ year, onClose }) {
+function AddForecastRow({ onClose }) {
+  const [year, setYear]             = useState(CURRENT_YEAR)
   const [customerId, setCustomerId] = useState('')
   const [productId, setProductId]   = useState('')
   const [error, setError]           = useState('')
+
   const { data: customers = [] } = useCustomers()
   const { data: products = [] }  = useProducts()
   const { data: price }          = useActivePriceForPair(customerId, productId)
@@ -85,14 +105,9 @@ function AddForecastRow({ year, onClose }) {
     setError('')
     if (!customerId) return setError('Seleziona un cliente.')
     if (!productId)  return setError('Seleziona un prodotto.')
-    if (!price)      return setError('Nessun listino attivo per questa combinazione. Vai su Listini medi e aggiungilo prima.')
+    if (!price)      return setError('Nessun listino attivo per questa combinazione.')
     try {
-      await createHeader.mutateAsync({
-        year,
-        customer_id:        Number(customerId),
-        product_id:         Number(productId),
-        avg_price_snapshot: price.avg_price,
-      })
+      await createHeader.mutateAsync({ year, customer_id: Number(customerId), product_id: Number(productId), avg_price_snapshot: price.avg_price })
       onClose()
     } catch (err) {
       if (err.message?.includes('forecast_headers_unique')) {
@@ -105,6 +120,12 @@ function AddForecastRow({ year, onClose }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="label">Anno</label>
+        <select className="input" value={year} onChange={e => setYear(Number(e.target.value))}>
+          {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
       <div>
         <label className="label">Cliente</label>
         <select className="input" value={customerId} onChange={e => { setCustomerId(e.target.value); setProductId('') }}>
@@ -121,7 +142,7 @@ function AddForecastRow({ year, onClose }) {
       </div>
       {customerId && productId && (
         <div className={`rounded-lg px-3 py-2 text-sm flex items-center gap-2 ${price ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-amber-50 border border-amber-200 text-amber-800'}`}>
-          {price ? <>✓ Listino trovato: <strong>€ {Number(price.avg_price).toFixed(4)}</strong></> : <><AlertTriangle size={14} /> Nessun listino attivo.</>}
+          {price ? <>✓ Listino: <strong>€ {Number(price.avg_price).toFixed(4)}</strong></> : <><AlertTriangle size={14} /> Nessun listino attivo.</>}
         </div>
       )}
       {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
@@ -148,28 +169,43 @@ function sortRows(rows, col, dir) {
 }
 
 export default function ForecastPage() {
-  const [year, setYear]                     = useState(CURRENT_YEAR)
+  const [startMonth, setStartMonth]         = useState(1)
+  const [startYear,  setStartYear]          = useState(CURRENT_YEAR)
+  const [endMonth,   setEndMonth]           = useState(12)
+  const [endYear,    setEndYear]            = useState(CURRENT_YEAR)
   const [modalOpen, setModalOpen]           = useState(false)
   const [search, setSearch]                 = useState('')
   const [filterCustomer, setFilterCustomer] = useState('')
   const [filterProduct, setFilterProduct]   = useState('')
-  const [sortCol, setSortCol]               = useState('')
-  const [sortDir, setSortDir]               = useState('asc')
   const [filterCategory, setFilterCategory] = useState('')
   const [filterRotation, setFilterRotation] = useState('')
+  const [sortCol, setSortCol]               = useState('')
+  const [sortDir, setSortDir]               = useState('asc')
 
-  const { data: rows = [], isLoading } = useForecastPivot(year)
+  const { data: rows = [], isLoading } = useForecastPivotAll()
   const { data: categories = [] }      = useCategories()
   const { data: rotations = [] }       = useRotations()
   const updateLine                     = useUpdateForecastLine()
   const deleteHeader                   = useDeleteForecastHeader()
+
+  // Colonne del range continuo
+  const cols = useMemo(
+    () => buildMonthRange(startYear, startMonth, endYear, endMonth),
+    [startYear, startMonth, endYear, endMonth]
+  )
+
+  // Indice rows per header_id
+  const rowsByHeader = useMemo(() => {
+    const map = {}
+    for (const r of rows) map[r.header_id] = r
+    return map
+  }, [rows])
 
   function handleSort(col) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
   }
 
-  // Costruisce set di product_id dalla rotazione selezionata
   const rotationProductIds = useMemo(() => {
     if (!filterRotation) return null
     const rot = rotations.find(r => String(r.id) === filterRotation)
@@ -177,25 +213,20 @@ export default function ForecastPage() {
     return new Set(rot.products.map(p => p.product_id))
   }, [filterRotation, rotations])
 
-  // Mappa product_id -> category_id dalla forecast_pivot
-  // La pivot ha product_id, lo usiamo per filtrare per categoria
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     return rows.filter(r => {
       if (filterCustomer && r.company_name        !== filterCustomer) return false
       if (filterProduct  && r.product_description !== filterProduct)  return false
-      if (q) {
-  const words = q.split(/\s+/).filter(Boolean)
-  const text = [r.company_name, r.product_description, r.ean].join(' ').toLowerCase()
-  if (!words.every(w => text.includes(w))) return false
-}
-      // Filtro categoria: confronta con category_id del prodotto
       if (filterCategory && String(r.category_id) !== filterCategory) return false
-      // Filtro rotazione: mostra solo cliente+prodotti della rotazione
+      if (q) {
+        const words = q.split(/\s+/).filter(Boolean)
+        const text  = [r.company_name, r.product_description, r.ean].join(' ').toLowerCase()
+        if (!words.every(w => text.includes(w))) return false
+      }
       if (rotationProductIds) {
         const rot = rotations.find(r2 => String(r2.id) === filterRotation)
-        if (!rot) return false
-        if (r.company_name !== rot.company_name) return false
+        if (!rot || r.company_name !== rot.company_name) return false
         if (!rotationProductIds.has(r.product_id)) return false
       }
       return true
@@ -204,21 +235,20 @@ export default function ForecastPage() {
 
   const sorted = useMemo(() => sortRows(filtered, sortCol, sortDir), [filtered, sortCol, sortDir])
 
-  async function handleCellSave(headerId, month, qty) {
-    await updateLine.mutateAsync({ headerId, month, qty_pieces: qty, year })
+  async function handleCellSave(row, col, qty) {
+    await updateLine.mutateAsync({ headerId: row.header_id, month: col.month, qty_pieces: qty, year: col.year })
   }
 
   async function handleDelete(row) {
-    if (!confirm(`Eliminare il forecast per "${row.company_name} — ${row.product_description}" per l'anno ${year}?`)) return
-    await deleteHeader.mutateAsync({ id: row.header_id, year })
+    if (!confirm(`Eliminare il forecast per "${row.company_name} — ${row.product_description}" anno ${row.year}?`)) return
+    await deleteHeader.mutateAsync({ id: row.header_id, year: row.year })
   }
 
-  const totals = sorted.reduce((acc, r) => {
-    MONTH_KEYS.forEach(mk => { acc[mk] = (acc[mk] || 0) + Number(r[mk] || 0) })
-    acc.total_qty     = (acc.total_qty     || 0) + Number(r.total_qty     || 0)
-    acc.total_revenue = (acc.total_revenue || 0) + Number(r.total_revenue || 0)
-    return acc
-  }, {})
+  // Totali per colonna
+  const colTotals = useMemo(() => cols.map(c => ({
+    ...c,
+    total: sorted.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0), 0)
+  })), [sorted, cols])
 
   const thProps = { sortCol, sortDir, onSort: handleSort }
 
@@ -235,54 +265,49 @@ export default function ForecastPage() {
       />
 
       {/* Filtri */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
-         <div className="relative">
-          <select className="input pr-8 appearance-none font-medium" value={year} onChange={e => setYear(Number(e.target.value))}>
-            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-        </div> 
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        {/* Range mese/anno */}
+        <select className="input w-24" value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
+          {MONTHS_SHORT.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+        </select>
+        <select className="input w-20" value={startYear} onChange={e => setStartYear(Number(e.target.value))}>
+          {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <span className="text-gray-400">→</span>
+        <select className="input w-24" value={endMonth} onChange={e => setEndMonth(Number(e.target.value))}>
+          {MONTHS_SHORT.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+        </select>
+        <select className="input w-20" value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
+          {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
 
-        {/* Cerca generico */}
+        {/* Cerca */}
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            className="input pl-8 w-56"
-            placeholder="Cerca EAN, prodotto, cliente…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+          <input className="input pl-8 w-48" placeholder="Cerca…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
 
-        <select className="input max-w-44" value={filterCustomer} onChange={e => setFilterCustomer(e.target.value)}>
+        <select className="input w-44" value={filterCustomer} onChange={e => setFilterCustomer(e.target.value)}>
           <option value="">Tutti i clienti</option>
           {[...new Set(rows.map(r => r.company_name))].sort().map(n => <option key={n} value={n}>{n}</option>)}
         </select>
-        <select className="input max-w-44" value={filterProduct} onChange={e => setFilterProduct(e.target.value)}>
+        <select className="input w-44" value={filterProduct} onChange={e => setFilterProduct(e.target.value)}>
           <option value="">Tutti i prodotti</option>
           {[...new Set(rows.map(r => r.product_description))].sort().map(n => <option key={n} value={n}>{n}</option>)}
         </select>
-        <select className="input max-w-44" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+        <select className="input w-44" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
           <option value="">Tutte le categorie</option>
           {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
         </select>
-        <select className="input max-w-44" value={filterRotation} onChange={e => { setFilterRotation(e.target.value); setFilterCustomer(''); setFilterProduct('') }}>
+        <select className="input w-44" value={filterRotation} onChange={e => { setFilterRotation(e.target.value); setFilterCustomer(''); setFilterProduct('') }}>
           <option value="">Tutte le rotazioni</option>
-          {rotations.map(r => (
-            <option key={r.id} value={String(r.id)}>
-              {r.company_name} — {new Date(r.period_start).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' })} / {r.product_count} prodotti
-            </option>
-          ))}
+          {rotations.map(r => <option key={r.id} value={String(r.id)}>{r.company_name} — {r.product_count} prodotti</option>)}
         </select>
 
         {(search || filterCustomer || filterProduct || filterCategory || filterRotation) && (
-          <button className="text-sm text-gray-400 hover:text-gray-600" onClick={() => { setSearch(''); setFilterCustomer(''); setFilterProduct(''); setFilterCategory(''); setFilterRotation('') }}>
-            Pulisci filtri
-          </button>
-        )}
-        {sortCol && (
-          <button className="text-sm text-gray-400 hover:text-gray-600" onClick={() => { setSortCol(''); setSortDir('asc') }}>
-            Rimuovi ordinamento
+          <button className="text-sm text-gray-400 hover:text-gray-600"
+            onClick={() => { setSearch(''); setFilterCustomer(''); setFilterProduct(''); setFilterCategory(''); setFilterRotation('') }}>
+            Pulisci
           </button>
         )}
       </div>
@@ -294,22 +319,22 @@ export default function ForecastPage() {
         ) : sorted.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400 text-sm gap-2">
             <span>Nessuna riga trovata.</span>
-            {!search && !filterCustomer && !filterProduct && (
+            {!search && !filterCustomer && !filterProduct && !filterCategory && !filterRotation && (
               <button className="btn-primary mt-2" onClick={() => setModalOpen(true)}>
                 <Plus size={15} /> Aggiungi la prima riga
               </button>
             )}
           </div>
         ) : (
-          <table className="w-full text-xs" style={{ minWidth: '1200px' }}>
+          <table className="w-full text-xs" style={{ minWidth: `${500 + cols.length * 60}px` }}>
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <SortableTh col="ean"                 label="EAN"             {...thProps} className="text-left min-w-32" />
-                <SortableTh col="product_description" label="Desc. Forecast"  {...thProps} className="text-left min-w-44" />
+                <SortableTh col="ean"                 label="EAN"             {...thProps} className="text-left min-w-28" />
+                <SortableTh col="product_description" label="Desc. Forecast"  {...thProps} className="text-left min-w-40" />
                 <SortableTh col="company_name"        label="Ragione Sociale" {...thProps} className="text-left min-w-36 sticky left-0 bg-gray-50" />
-                <SortableTh col="avg_price_snapshot"  label="Listino Medio"   {...thProps} className="text-right min-w-24" />
-                {MONTHS.map((m, i) => (
-                  <SortableTh key={m} col={MONTH_KEYS[i]} label={m} {...thProps} className="text-right min-w-14" />
+                <SortableTh col="avg_price_snapshot"  label="Listino Medio"   {...thProps} className="text-right min-w-20" />
+                {cols.map(c => (
+                  <th key={`${c.year}-${c.month}`} className="text-right px-2 py-3 font-medium text-gray-500 min-w-14">{c.label}</th>
                 ))}
                 <SortableTh col="total_qty"     label="Pezzi"    {...thProps} className="text-right min-w-20 sticky right-16 bg-gray-50 border-l border-gray-100" />
                 <SortableTh col="total_revenue" label="Valore €"  {...thProps} className="text-right min-w-24 sticky right-8 bg-gray-50" />
@@ -320,25 +345,31 @@ export default function ForecastPage() {
               {sorted.map((row, idx) => {
                 const bg = idx % 2 === 1 ? '#f3f4f6' : '#ffffff'
                 const tdStyle = { backgroundColor: bg }
+                const rowTotQty = cols.filter(c => c.year === row.year).reduce((s, c) => s + Number(row[c.key] || 0), 0)
+                const rowTotRev = rowTotQty * Number(row.avg_price_snapshot || 0)
                 return (
-                  <tr
-                    key={row.header_id}
-                    style={{ backgroundColor: bg }}
+                  <tr key={row.header_id} style={{ backgroundColor: bg }}
                     className="border-b border-gray-50 transition-colors"
-                    onMouseEnter={e => { Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = '#eeffee') }}
-                    onMouseLeave={e => { Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = bg) }}
+                    onMouseEnter={e => Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = '#eeffee')}
+                    onMouseLeave={e => Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = bg)}
                   >
                     <td style={tdStyle} className="px-3 py-2 font-mono text-gray-500">{row.ean}</td>
                     <td style={tdStyle} className="px-3 py-2 text-gray-700">{row.product_description}</td>
                     <td style={tdStyle} className="px-3 py-2 font-medium text-gray-900 sticky left-0">{row.company_name}</td>
-                    <td style={tdStyle} className="px-3 py-2 text-right text-gray-500">{Number(row.avg_price_snapshot).toFixed(2)}</td>
-                    {MONTH_KEYS.map((mk, i) => (
-                      <td key={mk} style={tdStyle} className="px-1 py-2">
-                        <EditableCell value={row[mk]} onSave={qty => handleCellSave(row.header_id, i + 1, qty)} />
-                      </td>
-                    ))}
-                    <td style={tdStyle} className="px-3 py-2 text-right font-semibold text-gray-900 sticky right-16 border-l border-gray-100">{fmt(row.total_qty)}</td>
-                    <td style={tdStyle} className="px-3 py-2 text-right font-semibold text-gray-900 sticky right-8">{fmtEur(row.total_revenue)}</td>
+                    <td style={tdStyle} className="px-3 py-2 text-right text-gray-500">{Number(row.avg_price_snapshot || 0).toFixed(2)}</td>
+                    {cols.map(c => {
+                      const val = c.year === row.year ? Number(row[c.key] || 0) : null
+                      return (
+                        <td key={`${c.year}-${c.month}`} style={tdStyle} className="px-1 py-2">
+                          {c.year === row.year
+                            ? <EditableCell value={val} onSave={qty => handleCellSave(row, c, qty)} />
+                            : <span className="block text-right text-gray-200">—</span>
+                          }
+                        </td>
+                      )
+                    })}
+                    <td style={tdStyle} className="px-3 py-2 text-right font-semibold text-gray-900 sticky right-16 border-l border-gray-100">{fmt(rowTotQty)}</td>
+                    <td style={tdStyle} className="px-3 py-2 text-right font-semibold text-gray-900 sticky right-8">{fmtEur(rowTotRev)}</td>
                     <td style={tdStyle} className="px-3 py-2 sticky right-0">
                       <button onClick={() => handleDelete(row)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors" title="Elimina">
                         <Trash2 size={13} />
@@ -352,9 +383,13 @@ export default function ForecastPage() {
               <tfoot>
                 <tr className="border-t-2 border-gray-200 bg-gray-100 font-semibold">
                   <td className="px-3 py-2 text-gray-700" colSpan={4}>Totale ({sorted.length} righe)</td>
-                  {MONTH_KEYS.map(mk => <td key={mk} className="px-2 py-2 text-right text-gray-900">{fmt(totals[mk])}</td>)}
-                  <td className="px-3 py-2 text-right text-gray-900 sticky right-16 bg-gray-100 border-l border-gray-200">{fmt(totals.total_qty)}</td>
-                  <td className="px-3 py-2 text-right text-gray-900 sticky right-8 bg-gray-100">{fmtEur(totals.total_revenue)}</td>
+                  {colTotals.map(c => <td key={`${c.year}-${c.month}`} className="px-2 py-2 text-right text-gray-900">{fmt(c.total)}</td>)}
+                  <td className="px-3 py-2 text-right text-gray-900 sticky right-16 bg-gray-100 border-l border-gray-200">
+                    {fmt(sorted.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0), 0))}
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-900 sticky right-8 bg-gray-100">
+                    {fmtEur(sorted.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0) * Number(r.avg_price_snapshot || 0), 0))}
+                  </td>
                   <td className="sticky right-0 bg-gray-100" />
                 </tr>
               </tfoot>
@@ -370,8 +405,8 @@ export default function ForecastPage() {
       )}
 
       {modalOpen && (
-        <Modal title={`Aggiungi riga forecast ${year}`} onClose={() => setModalOpen(false)}>
-          <AddForecastRow year={year} onClose={() => setModalOpen(false)} />
+        <Modal title="Aggiungi riga forecast" onClose={() => setModalOpen(false)}>
+          <AddForecastRow onClose={() => setModalOpen(false)} />
         </Modal>
       )}
     </div>
