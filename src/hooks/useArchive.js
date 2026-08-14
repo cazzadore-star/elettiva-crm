@@ -9,7 +9,7 @@ export function useArchives() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('forecast_archives')
-        .select('id, name, year, created_at')
+        .select('id, name, year, period_start, period_end, created_at')
         .order('created_at', { ascending: false })
       if (error) throw error
       return data
@@ -20,7 +20,9 @@ export function useArchives() {
 export function useCreateArchive() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ name, year }) => {
+    mutationFn: async ({ name, periodStart, periodEnd }) => {
+      const year = new Date(periodStart).getFullYear()
+
       // Legge tutti i dati della forecast_pivot per l'anno
       const { data: snapshot, error: snapError } = await supabase
         .from('forecast_pivot')
@@ -30,7 +32,13 @@ export function useCreateArchive() {
 
       const { data, error } = await supabase
         .from('forecast_archives')
-        .insert({ name, year, data: snapshot })
+        .insert({
+          name,
+          year,
+          period_start: periodStart,
+          period_end:   periodEnd,
+          data:         snapshot,
+        })
         .select()
         .single()
       if (error) throw error

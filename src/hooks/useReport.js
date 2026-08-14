@@ -3,14 +3,13 @@ import { supabase } from '../lib/supabase'
 
 const KEY = 'report'
 
-export function useReportPivot(year) {
+export function useReportPivot() {
   return useQuery({
-    queryKey: [KEY, 'pivot', year],
+    queryKey: [KEY, 'pivot', 'all'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('report_pivot')
         .select('*')
-        .eq('year', year)
         .order('category_id', { ascending: true, nullsFirst: false })
       if (error) throw error
       return data

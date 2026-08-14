@@ -12,7 +12,7 @@ import PageHeader from '../components/ui/PageHeader'
 const MONTHS = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
 const MONTH_KEYS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
 const CURRENT_YEAR = new Date().getFullYear()
-/* const YEARS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 1 + i) */
+const YEARS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 1 + i) 
 
 function fmt(n) {
   if (!n && n !== 0) return '—'
@@ -236,12 +236,12 @@ export default function ForecastPage() {
 
       {/* Filtri */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
-        {/* <div className="relative">
+         <div className="relative">
           <select className="input pr-8 appearance-none font-medium" value={year} onChange={e => setYear(Number(e.target.value))}>
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-        </div> */}
+        </div> 
 
         {/* Cerca generico */}
         <div className="relative">
