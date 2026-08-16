@@ -26,6 +26,9 @@ function fmtEur(n) {
 function fmt(n) {
   return Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
+function fmtDec(n) {
+  return Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 
 function KpiCard({ icon: Icon, label, value, sub, color }) {
   return (
@@ -52,21 +55,46 @@ export default function DashboardPage() {
   const { data: customers = [] }       = useCustomers()
   const { data: rotations = [] }       = useRotations()
 
+  // Colonne del range selezionato
   const cols = useMemo(
     () => buildMonthRange(startYear, startMonth, endYear, endMonth),
     [startYear, startMonth, endYear, endMonth]
   )
+  const numMonths = cols.length
 
+  // Righe forecast filtrate per il range selezionato (solo anni nel range)
+  const yearsInRange = useMemo(() => [...new Set(cols.map(c => c.year))], [cols])
+  const rangeRows = useMemo(
+    () => rows.filter(r => yearsInRange.includes(r.year)),
+    [rows, yearsInRange]
+  )
+
+  // Pezzi e fatturato nel range (solo mesi selezionati)
+  const { totalQty, totalRevenue } = useMemo(() => {
+    let qty = 0, rev = 0
+    for (const r of rangeRows) {
+      for (const c of cols) {
+        if (c.year === r.year) {
+          const q = Number(r[c.key] || 0)
+          qty += q
+          rev += q * Number(r.avg_price_snapshot || 0)
+        }
+      }
+    }
+    return { totalQty: qty, totalRevenue: rev }
+  }, [rangeRows, cols])
+
+  // KPI fatturato anno corrente per card (sempre anno corrente)
   const currentYearRows = rows.filter(r => r.year === CURRENT_YEAR)
-  const totalQty        = currentYearRows.reduce((s, r) => s + Number(r.total_qty     || 0), 0)
-  const totalRevenue    = currentYearRows.reduce((s, r) => s + Number(r.total_revenue || 0), 0)
 
+  // Rotazioni in scadenza prossimi 60 giorni (fisso, non filtrato)
   const today    = new Date()
   const in60days = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000)
   const expiringRotations = rotations
     .filter(r => { const end = new Date(r.period_end); return end >= today && end <= in60days })
     .sort((a, b) => new Date(a.period_end) - new Date(b.period_end))
 
+  // Grafico mensile sul range selezionato
   const monthlyData = cols.map(c => {
     const colRows = rows.filter(r => r.year === c.year)
     const rev = colRows.reduce((s, r) => s + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0)
@@ -74,59 +102,129 @@ export default function DashboardPage() {
   })
   const maxRev = Math.max(...monthlyData.map(m => m.rev), 1)
 
-  const byCustomer = Object.values(
-    currentYearRows.reduce((acc, r) => {
-      if (!acc[r.company_name]) acc[r.company_name] = { name: r.company_name, revenue: 0 }
-      acc[r.company_name].revenue += Number(r.total_revenue || 0)
+  // Top clienti per fatturato nel range
+  const byCustomer = useMemo(() => Object.values(
+    rangeRows.reduce((acc, r) => {
+      if (!acc[r.company_name]) acc[r.company_name] = { name: r.company_name, revenue: 0, qty: 0 }
+      for (const c of cols) {
+        if (c.year === r.year) {
+          const q = Number(r[c.key] || 0)
+          acc[r.company_name].qty     += q
+          acc[r.company_name].revenue += q * Number(r.avg_price_snapshot || 0)
+        }
+      }
       return acc
     }, {})
-  ).sort((a, b) => b.revenue - a.revenue)
+  ).sort((a, b) => b.revenue - a.revenue), [rangeRows, cols])
 
-  const byProduct = Object.values(
-    currentYearRows.reduce((acc, r) => {
-      if (!acc[r.product_description]) acc[r.product_description] = { name: r.product_description, qty: 0 }
-      acc[r.product_description].qty += Number(r.total_qty || 0)
-      return acc
-    }, {})
-  ).sort((a, b) => b.qty - a.qty)
+  // Top prodotti per pezzi nel range + rotazione media mensile per prodotto
+  const byProduct = useMemo(() => {
+    // Mappa product_description -> totale pezzi nel range
+    const prodMap = {}
+    for (const r of rangeRows) {
+      if (!prodMap[r.product_description]) prodMap[r.product_description] = { name: r.product_description, qty: 0 }
+      for (const c of cols) {
+        if (c.year === r.year) prodMap[r.product_description].qty += Number(r[c.key] || 0)
+      }
+    }
+
+    // Calcola rotazione media mensile per prodotto dalle rotazioni
+    // rotazione media = (num_points × rotation_value) / mesi_per_periodo × mesi_selezionati
+    // Semplificato: per ogni rotazione attiva nel range, calcolo pezzi/mese e sommo per prodotto
+    const rotProdMap = {} // product description -> { totalPezziMese }
+    for (const rot of rotations) {
+      const rotStart = new Date(rot.period_start)
+      const rotEnd   = new Date(rot.period_end)
+      const rangeStart = new Date(startYear, startMonth - 1, 1)
+      const rangeEnd   = new Date(endYear, endMonth - 1, 31)
+      // Sovrapposizione periodo rotazione e range selezionato
+      if (rotEnd < rangeStart || rotStart > rangeEnd) continue
+      const stepMonths = { monthly: 1, bimonthly: 2, quarterly: 3, quadrimestral: 4 }[rot.frequency] || 1
+      const rotDurationMonths = (rotEnd.getFullYear() - rotStart.getFullYear()) * 12 + (rotEnd.getMonth() - rotStart.getMonth()) + 1
+      const numOrders = Math.ceil(rotDurationMonths / stepMonths)
+      const pezziPerMese = (rot.num_points * rot.rotation_value * numOrders) / Math.max(rotDurationMonths, 1)
+      if (rot.products && Array.isArray(rot.products)) {
+        for (const rp of rot.products) {
+          // Cerca la descrizione del prodotto nelle righe
+          const prodRow = rows.find(r => r.product_id === rp.product_id)
+          if (!prodRow) continue
+          const desc = prodRow.product_description
+          if (!rotProdMap[desc]) rotProdMap[desc] = 0
+          rotProdMap[desc] += pezziPerMese
+        }
+      }
+    }
+
+    return Object.values(prodMap)
+      .map(p => ({
+        ...p,
+        rotMedia: rotProdMap[p.name] || 0,
+      }))
+      .sort((a, b) => b.qty - a.qty)
+  }, [rangeRows, cols, rotations, rows, startYear, startMonth, endYear, endMonth])
+
+  // Rotazione media globale nel periodo (da rotazioni)
+  const rotazioneMediaGlobale = useMemo(() => {
+    if (rotations.length === 0 || numMonths === 0) return 0
+    let totalPezziMese = 0
+    let count = 0
+    for (const rot of rotations) {
+      const rotStart = new Date(rot.period_start)
+      const rotEnd   = new Date(rot.period_end)
+      const rangeStart = new Date(startYear, startMonth - 1, 1)
+      const rangeEnd   = new Date(endYear, endMonth - 1, 31)
+      if (rotEnd < rangeStart || rotStart > rangeEnd) continue
+      const stepMonths = { monthly: 1, bimonthly: 2, quarterly: 3, quadrimestral: 4 }[rot.frequency] || 1
+      const rotDurationMonths = (rotEnd.getFullYear() - rotStart.getFullYear()) * 12 + (rotEnd.getMonth() - rotStart.getMonth()) + 1
+      const numOrders = Math.ceil(rotDurationMonths / stepMonths)
+      const pezziPerMese = (rot.num_points * rot.rotation_value * numOrders) / Math.max(rotDurationMonths, 1)
+      totalPezziMese += pezziPerMese
+      count++
+    }
+    return count > 0 ? totalPezziMese / count : 0
+  }, [rotations, startYear, startMonth, endYear, endMonth])
 
   const FREQ = { monthly: 'Mensile', bimonthly: 'Bimestrale', quarterly: 'Trimestrale', quadrimestral: 'Quadrimestrale' }
 
+  const periodLabel = `${MONTHS_SHORT[startMonth-1]} ${startYear} → ${MONTHS_SHORT[endMonth-1]} ${endYear}`
+
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="mb-6">
+      <div className="mb-4">
         <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Riepilogo forecast — anno {CURRENT_YEAR}</p>
+        <p className="text-sm text-gray-500 mt-0.5">Riepilogo forecast</p>
+      </div>
+
+      {/* Filtro globale periodo */}
+      <div className="card px-4 py-3 mb-6 flex items-center gap-3 flex-wrap">
+        <span className="text-sm font-medium text-gray-700">Periodo:</span>
+        <select className="input w-24 text-sm" value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
+          {MONTHS_SHORT.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+        </select>
+        <select className="input w-20 text-sm" value={startYear} onChange={e => setStartYear(Number(e.target.value))}>
+          {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <span className="text-gray-400">→</span>
+        <select className="input w-24 text-sm" value={endMonth} onChange={e => setEndMonth(Number(e.target.value))}>
+          {MONTHS_SHORT.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+        </select>
+        <select className="input w-20 text-sm" value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
+          {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <span className="text-xs text-gray-400 ml-2">{numMonths} mes{numMonths === 1 ? 'e' : 'i'}</span>
       </div>
 
       {/* KPI */}
       <div className="grid grid-cols-2 gap-4 mb-6 lg:grid-cols-4">
-        <KpiCard icon={TrendingUp} label="Fatturato previsto" value={fmtEur(totalRevenue)} sub={`Anno ${CURRENT_YEAR}`}                    color="bg-brand-600" />
-        <KpiCard icon={Package}    label="Pezzi previsti"     value={fmt(totalQty)}         sub={`Anno ${CURRENT_YEAR}`}                    color="bg-teal-500" />
-        <KpiCard icon={Users}      label="Clienti attivi"     value={customers.length}       sub="in anagrafica"                             color="bg-indigo-500" />
-        <KpiCard icon={RefreshCw}  label="Rotazioni attive"   value={rotations.length}       sub={`${expiringRotations.length} in scadenza`} color="bg-amber-500" />
+        <KpiCard icon={TrendingUp} label="Fatturato previsto"     value={fmtEur(totalRevenue)}          sub={periodLabel}                               color="bg-brand-600" />
+        <KpiCard icon={Package}    label="Pezzi previsti"         value={fmt(totalQty)}                  sub={periodLabel}                               color="bg-teal-500" />
+        <KpiCard icon={Users}      label="Clienti attivi"         value={customers.length}               sub="in anagrafica"                             color="bg-indigo-500" />
+        <KpiCard icon={RefreshCw}  label="Rot. media mensile/pdv" value={fmtDec(rotazioneMediaGlobale)}  sub="pezzi/mese per punto vendita"              color="bg-amber-500" />
       </div>
 
       {/* Grafico mensile */}
       <div className="card p-5 mb-6">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <h2 className="text-sm font-medium text-gray-700">Andamento mensile — fatturato</h2>
-          <div className="flex items-center gap-2">
-            <select className="input w-24 text-xs" value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
-              {MONTHS_SHORT.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-            </select>
-            <select className="input w-20 text-xs" value={startYear} onChange={e => setStartYear(Number(e.target.value))}>
-              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-            <span className="text-gray-400 text-xs">→</span>
-            <select className="input w-24 text-xs" value={endMonth} onChange={e => setEndMonth(Number(e.target.value))}>
-              {MONTHS_SHORT.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-            </select>
-            <select className="input w-20 text-xs" value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
-              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-        </div>
+        <h2 className="text-sm font-medium text-gray-700 mb-4">Andamento mensile — fatturato</h2>
         {isLoading ? (
           <div className="h-48 flex items-center justify-center text-gray-400 text-sm">Caricamento…</div>
         ) : (
@@ -155,11 +253,11 @@ export default function DashboardPage() {
         {/* Clienti per fatturato */}
         <div className="card p-5">
           <h2 className="text-sm font-medium text-gray-700 mb-3">
-            Clienti per fatturato {CURRENT_YEAR}
+            Clienti per fatturato
             <span className="ml-2 text-xs text-gray-400 font-normal">({byCustomer.length} totali)</span>
           </h2>
           {byCustomer.length === 0 ? (
-            <p className="text-sm text-gray-400">Nessun dato.</p>
+            <p className="text-sm text-gray-400">Nessun dato nel periodo selezionato.</p>
           ) : (
             <div style={{ height: '320px', overflowY: 'scroll' }}>
               <div className="space-y-2 pr-1">
@@ -182,14 +280,14 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Prodotti per pezzi */}
+        {/* Prodotti per pezzi con rotazione media */}
         <div className="card p-5">
           <h2 className="text-sm font-medium text-gray-700 mb-3">
-            Prodotti per pezzi {CURRENT_YEAR}
+            Prodotti per pezzi
             <span className="ml-2 text-xs text-gray-400 font-normal">({byProduct.length} totali)</span>
           </h2>
           {byProduct.length === 0 ? (
-            <p className="text-sm text-gray-400">Nessun dato.</p>
+            <p className="text-sm text-gray-400">Nessun dato nel periodo selezionato.</p>
           ) : (
             <div style={{ height: '320px', overflowY: 'scroll' }}>
               <div className="space-y-2 pr-1">
@@ -199,7 +297,14 @@ export default function DashboardPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-gray-900 truncate">{p.name}</span>
-                        <span className="text-xs font-medium text-gray-900 ml-2 shrink-0">{fmt(p.qty)} pz</span>
+                        <div className="flex items-center gap-2 ml-2 shrink-0">
+                          {p.rotMedia > 0 && (
+                            <span className="text-xs text-amber-600 font-medium" title="Rotazione media mensile/pdv">
+                              {fmtDec(p.rotMedia)} rot/mese
+                            </span>
+                          )}
+                          <span className="text-xs font-medium text-gray-900">{fmt(p.qty)} pz</span>
+                        </div>
                       </div>
                       <div className="h-1 bg-gray-100 rounded mt-1">
                         <div className="h-1 bg-teal-400 rounded" style={{ width: `${(p.qty / (byProduct[0]?.qty || 1)) * 100}%` }} />
@@ -213,7 +318,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Rotazioni in scadenza */}
+      {/* Rotazioni in scadenza — fisso, non filtrato per periodo */}
       <div className="card p-5">
         <h2 className="text-sm font-medium text-gray-700 mb-3">
           Rotazioni in scadenza nei prossimi 60 giorni
