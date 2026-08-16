@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { TrendingUp, Users, Package, RefreshCw } from 'lucide-react'
+import { TrendingUp, Users, Package, RefreshCw, X } from 'lucide-react'
 import { useForecastPivotAll } from '../hooks/useForecast'
 import { useCustomers } from '../hooks/useCustomers'
 import { useRotations } from '../hooks/useRotations'
@@ -30,6 +30,22 @@ function fmtDec(n) {
   return Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function delta(curr, prev) {
+  if (!prev || prev === 0) return null
+  return ((curr - prev) / prev) * 100
+}
+
+function DeltaBadge({ curr, prev }) {
+  const d = delta(curr, prev)
+  if (d === null) return <span style={{ color: 'var(--text-muted)' }} className="text-xs">—</span>
+  const positive = d >= 0
+  return (
+    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${positive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+      {positive ? '+' : ''}{d.toFixed(1)}%
+    </span>
+  )
+}
+
 function KpiCard({ icon: Icon, label, value, sub, color }) {
   return (
     <div className="card p-5 flex items-start gap-4">
@@ -45,148 +61,212 @@ function KpiCard({ icon: Icon, label, value, sub, color }) {
   )
 }
 
+function CustomerModal({ customerName, rows, cols, onClose }) {
+  const customerRows = rows.filter(r => r.company_name === customerName)
+  const totalRevenue = customerRows.reduce((s, r) =>
+    s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0), 0)
+  const totalQty = customerRows.reduce((s, r) =>
+    s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0), 0)
+  const monthlyData = cols.map(c => {
+    const rev = customerRows.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0)
+    return { ...c, rev }
+  })
+  const maxRev = Math.max(...monthlyData.map(m => m.rev), 1)
+  const byProduct = customerRows.map(r => {
+    const qty = cols.filter(c => c.year === r.year).reduce((s, c) => s + Number(r[c.key] || 0), 0)
+    const rev = qty * Number(r.avg_price_snapshot || 0)
+    return { name: r.product_description, qty, rev }
+  }).sort((a, b) => b.rev - a.rev)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" style={{ backgroundColor: 'var(--bg-card)' }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <h2 className="font-semibold text-lg" style={{ color: 'var(--text-main)' }}>{customerName}</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              {MONTHS_SHORT[cols[0]?.month - 1]} {cols[0]?.year} → {MONTHS_SHORT[cols[cols.length-1]?.month - 1]} {cols[cols.length-1]?.year}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg" style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--alt-row)'}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
+          <div className="grid grid-cols-3 gap-4">
+            {[{ label: 'Fatturato', value: fmtEur(totalRevenue) }, { label: 'Pezzi', value: fmt(totalQty) }, { label: 'Prodotti', value: byProduct.length }].map(k => (
+              <div key={k.label} className="rounded-lg p-4 border" style={{ backgroundColor: 'var(--alt-row)', borderColor: 'var(--border)' }}>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{k.label}</p>
+                <p className="text-lg font-semibold mt-1" style={{ color: 'var(--text-main)' }}>{k.value}</p>
+              </div>
+            ))}
+          </div>
+          <div>
+            <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>Andamento mensile</h3>
+            <div className="flex items-end gap-1" style={{ height: '140px' }}>
+              {monthlyData.map(m => {
+                const barH = m.rev > 0 ? Math.max((m.rev / maxRev) * 110, 8) : 0
+                return (
+                  <div key={`${m.year}-${m.month}`} className="flex-1 flex flex-col items-center justify-end gap-1">
+                    {m.rev > 0 && <span style={{ fontSize: '7px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{fmtEur(m.rev)}</span>}
+                    <div style={{ height: `${barH}px`, backgroundColor: 'var(--brand)', borderRadius: '3px 3px 0 0', width: '100%' }} />
+                    <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>{m.label}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>Prodotti per fatturato</h3>
+            <div className="space-y-2">
+              {byProduct.map((p, i) => (
+                <div key={p.name} className="flex items-center gap-3">
+                  <span className="text-xs w-5 shrink-0 font-medium" style={{ color: 'var(--text-muted)' }}>{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs truncate" style={{ color: 'var(--text-main)' }}>{p.name}</span>
+                      <div className="flex items-center gap-3 ml-2 shrink-0">
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmt(p.qty)} pz</span>
+                        <span className="text-xs font-medium" style={{ color: 'var(--text-main)' }}>{fmtEur(p.rev)}</span>
+                      </div>
+                    </div>
+                    <div className="h-1 rounded mt-1" style={{ backgroundColor: 'var(--border)' }}>
+                      <div className="h-1 rounded" style={{ backgroundColor: 'var(--brand)', width: `${(p.rev / (byProduct[0]?.rev || 1)) * 100}%` }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function DashboardPage() {
-  const [startMonth, setStartMonth] = useState(1)
-  const [startYear,  setStartYear]  = useState(CURRENT_YEAR)
-  const [endMonth,   setEndMonth]   = useState(12)
-  const [endYear,    setEndYear]    = useState(CURRENT_YEAR)
+  const [startMonth, setStartMonth]             = useState(1)
+  const [startYear,  setStartYear]              = useState(CURRENT_YEAR)
+  const [endMonth,   setEndMonth]               = useState(12)
+  const [endYear,    setEndYear]                = useState(CURRENT_YEAR)
+  const [selectedCustomer, setSelectedCustomer] = useState(null)
+  const [confrontoTab, setConfrontoTab]         = useState('clienti')
 
   const { data: rows = [], isLoading } = useForecastPivotAll()
   const { data: customers = [] }       = useCustomers()
   const { data: rotations = [] }       = useRotations()
 
-  // Colonne del range selezionato
-  const cols = useMemo(
-    () => buildMonthRange(startYear, startMonth, endYear, endMonth),
-    [startYear, startMonth, endYear, endMonth]
-  )
-  const numMonths = cols.length
+  const cols = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
+  // Stesso periodo ma anno precedente
+  const colsPrev = useMemo(() => buildMonthRange(startYear - 1, startMonth, endYear - 1, endMonth), [startYear, startMonth, endYear, endMonth])
 
-  // Righe forecast filtrate per il range selezionato (solo anni nel range)
-  const yearsInRange = useMemo(() => [...new Set(cols.map(c => c.year))], [cols])
-  const rangeRows = useMemo(
-    () => rows.filter(r => yearsInRange.includes(r.year)),
-    [rows, yearsInRange]
-  )
+  const yearsInRange     = useMemo(() => [...new Set(cols.map(c => c.year))], [cols])
+  const yearsInRangePrev = useMemo(() => [...new Set(colsPrev.map(c => c.year))], [colsPrev])
+  const rangeRows        = useMemo(() => rows.filter(r => yearsInRange.includes(r.year)), [rows, yearsInRange])
+  const rangeRowsPrev    = useMemo(() => rows.filter(r => yearsInRangePrev.includes(r.year)), [rows, yearsInRangePrev])
 
-  // Pezzi e fatturato nel range (solo mesi selezionati)
-  const { totalQty, totalRevenue } = useMemo(() => {
-    let qty = 0, rev = 0
-    for (const r of rangeRows) {
-      for (const c of cols) {
-        if (c.year === r.year) {
-          const q = Number(r[c.key] || 0)
-          qty += q
-          rev += q * Number(r.avg_price_snapshot || 0)
-        }
+  function calcRevForRows(rowSet, colSet) {
+    let rev = 0
+    for (const r of rowSet) {
+      for (const c of colSet) {
+        if (c.year === r.year) rev += Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0)
       }
     }
-    return { totalQty: qty, totalRevenue: rev }
-  }, [rangeRows, cols])
+    return rev
+  }
+  function calcQtyForRows(rowSet, colSet) {
+    let qty = 0
+    for (const r of rowSet) {
+      for (const c of colSet) {
+        if (c.year === r.year) qty += Number(r[c.key] || 0)
+      }
+    }
+    return qty
+  }
 
-  // KPI fatturato anno corrente per card (sempre anno corrente)
-  const currentYearRows = rows.filter(r => r.year === CURRENT_YEAR)
+  const totalRevenue = useMemo(() => calcRevForRows(rangeRows, cols), [rangeRows, cols])
+  const totalQty     = useMemo(() => calcRevForRows(rangeRows, cols) && calcQtyForRows(rangeRows, cols), [rangeRows, cols])
 
-  // Rotazioni in scadenza prossimi 60 giorni (fisso, non filtrato)
   const today    = new Date()
   const in60days = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000)
   const expiringRotations = rotations
     .filter(r => { const end = new Date(r.period_end); return end >= today && end <= in60days })
     .sort((a, b) => new Date(a.period_end) - new Date(b.period_end))
 
-  // Grafico mensile sul range selezionato
   const monthlyData = cols.map(c => {
-    const colRows = rows.filter(r => r.year === c.year)
-    const rev = colRows.reduce((s, r) => s + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0)
+    const rev = rows.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0)
     return { ...c, rev }
   })
   const maxRev = Math.max(...monthlyData.map(m => m.rev), 1)
 
-  // Top clienti per fatturato nel range
-  const byCustomer = useMemo(() => Object.values(
-    rangeRows.reduce((acc, r) => {
-      if (!acc[r.company_name]) acc[r.company_name] = { name: r.company_name, revenue: 0, qty: 0 }
-      for (const c of cols) {
-        if (c.year === r.year) {
-          const q = Number(r[c.key] || 0)
-          acc[r.company_name].qty     += q
-          acc[r.company_name].revenue += q * Number(r.avg_price_snapshot || 0)
-        }
-      }
-      return acc
-    }, {})
-  ).sort((a, b) => b.revenue - a.revenue), [rangeRows, cols])
-
-  // Top prodotti per pezzi nel range + rotazione media mensile per prodotto
-  const byProduct = useMemo(() => {
-    // Mappa product_description -> totale pezzi nel range
-    const prodMap = {}
+  const byCustomer = useMemo(() => {
+    const curr = {}, prev = {}
     for (const r of rangeRows) {
-      if (!prodMap[r.product_description]) prodMap[r.product_description] = { name: r.product_description, qty: 0 }
-      for (const c of cols) {
-        if (c.year === r.year) prodMap[r.product_description].qty += Number(r[c.key] || 0)
-      }
+      if (!curr[r.company_name]) curr[r.company_name] = 0
+      for (const c of cols) if (c.year === r.year) curr[r.company_name] += Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0)
     }
+    for (const r of rangeRowsPrev) {
+      if (!prev[r.company_name]) prev[r.company_name] = 0
+      for (const c of colsPrev) if (c.year === r.year) prev[r.company_name] += Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0)
+    }
+    return Object.keys(curr).map(name => ({ name, curr: curr[name], prev: prev[name] || 0 })).sort((a, b) => b.curr - a.curr)
+  }, [rangeRows, rangeRowsPrev, cols, colsPrev])
 
-    // Calcola rotazione media mensile per prodotto dalle rotazioni
-    // rotazione media = (num_points × rotation_value) / mesi_per_periodo × mesi_selezionati
-    // Semplificato: per ogni rotazione attiva nel range, calcolo pezzi/mese e sommo per prodotto
-    const rotProdMap = {} // product description -> { totalPezziMese }
+  const byCustomerForList = useMemo(() => byCustomer.map(c => ({ name: c.name, revenue: c.curr, qty: 0 })), [byCustomer])
+
+  const byProduct = useMemo(() => {
+    const curr = {}, prev = {}
+    for (const r of rangeRows) {
+      if (!curr[r.product_description]) curr[r.product_description] = 0
+      for (const c of cols) if (c.year === r.year) curr[r.product_description] += Number(r[c.key] || 0)
+    }
+    for (const r of rangeRowsPrev) {
+      if (!prev[r.product_description]) prev[r.product_description] = 0
+      for (const c of colsPrev) if (c.year === r.year) prev[r.product_description] += Number(r[c.key] || 0)
+    }
+    // Rotazione media
+    const rotProdMap = {}
     for (const rot of rotations) {
-      const rotStart = new Date(rot.period_start)
-      const rotEnd   = new Date(rot.period_end)
-      const rangeStart = new Date(startYear, startMonth - 1, 1)
-      const rangeEnd   = new Date(endYear, endMonth - 1, 31)
-      // Sovrapposizione periodo rotazione e range selezionato
+      const rotStart = new Date(rot.period_start), rotEnd = new Date(rot.period_end)
+      const rangeStart = new Date(startYear, startMonth - 1, 1), rangeEnd = new Date(endYear, endMonth - 1, 31)
       if (rotEnd < rangeStart || rotStart > rangeEnd) continue
-      const stepMonths = { monthly: 1, bimonthly: 2, quarterly: 3, quadrimestral: 4 }[rot.frequency] || 1
-      const rotDurationMonths = (rotEnd.getFullYear() - rotStart.getFullYear()) * 12 + (rotEnd.getMonth() - rotStart.getMonth()) + 1
-      const numOrders = Math.ceil(rotDurationMonths / stepMonths)
-      const pezziPerMese = (rot.num_points * rot.rotation_value * numOrders) / Math.max(rotDurationMonths, 1)
-      if (rot.products && Array.isArray(rot.products)) {
-        for (const rp of rot.products) {
-          // Cerca la descrizione del prodotto nelle righe
-          const prodRow = rows.find(r => r.product_id === rp.product_id)
-          if (!prodRow) continue
-          const desc = prodRow.product_description
-          if (!rotProdMap[desc]) rotProdMap[desc] = 0
-          rotProdMap[desc] += pezziPerMese
-        }
+      const step = { monthly: 1, bimonthly: 2, quarterly: 3, quadrimestral: 4 }[rot.frequency] || 1
+      const dur = (rotEnd.getFullYear() - rotStart.getFullYear()) * 12 + (rotEnd.getMonth() - rotStart.getMonth()) + 1
+      const ppm = (rot.num_points * rot.rotation_value * Math.ceil(dur / step)) / Math.max(dur, 1)
+      if (rot.products) for (const rp of rot.products) {
+        const pr = rows.find(r => r.product_id === rp.product_id)
+        if (!pr) continue
+        if (!rotProdMap[pr.product_description]) rotProdMap[pr.product_description] = 0
+        rotProdMap[pr.product_description] += ppm
       }
     }
+    return Object.keys(curr).map(name => ({ name, curr: curr[name], prev: prev[name] || 0, rotMedia: rotProdMap[name] || 0 })).sort((a, b) => b.curr - a.curr)
+  }, [rangeRows, rangeRowsPrev, cols, colsPrev, rotations, rows, startYear, startMonth, endYear, endMonth])
 
-    return Object.values(prodMap)
-      .map(p => ({
-        ...p,
-        rotMedia: rotProdMap[p.name] || 0,
-      }))
-      .sort((a, b) => b.qty - a.qty)
-  }, [rangeRows, cols, rotations, rows, startYear, startMonth, endYear, endMonth])
-
-  // Rotazione media globale nel periodo (da rotazioni)
   const rotazioneMediaGlobale = useMemo(() => {
-    if (rotations.length === 0 || numMonths === 0) return 0
-    let totalPezziMese = 0
-    let count = 0
+    let total = 0, count = 0
     for (const rot of rotations) {
-      const rotStart = new Date(rot.period_start)
-      const rotEnd   = new Date(rot.period_end)
-      const rangeStart = new Date(startYear, startMonth - 1, 1)
-      const rangeEnd   = new Date(endYear, endMonth - 1, 31)
+      const rotStart = new Date(rot.period_start), rotEnd = new Date(rot.period_end)
+      const rangeStart = new Date(startYear, startMonth - 1, 1), rangeEnd = new Date(endYear, endMonth - 1, 31)
       if (rotEnd < rangeStart || rotStart > rangeEnd) continue
-      const stepMonths = { monthly: 1, bimonthly: 2, quarterly: 3, quadrimestral: 4 }[rot.frequency] || 1
-      const rotDurationMonths = (rotEnd.getFullYear() - rotStart.getFullYear()) * 12 + (rotEnd.getMonth() - rotStart.getMonth()) + 1
-      const numOrders = Math.ceil(rotDurationMonths / stepMonths)
-      const pezziPerMese = (rot.num_points * rot.rotation_value * numOrders) / Math.max(rotDurationMonths, 1)
-      totalPezziMese += pezziPerMese
+      const step = { monthly: 1, bimonthly: 2, quarterly: 3, quadrimestral: 4 }[rot.frequency] || 1
+      const dur = (rotEnd.getFullYear() - rotStart.getFullYear()) * 12 + (rotEnd.getMonth() - rotStart.getMonth()) + 1
+      total += (rot.num_points * rot.rotation_value * Math.ceil(dur / step)) / Math.max(dur, 1)
       count++
     }
-    return count > 0 ? totalPezziMese / count : 0
+    return count > 0 ? total / count : 0
   }, [rotations, startYear, startMonth, endYear, endMonth])
 
-  const FREQ = { monthly: 'Mensile', bimonthly: 'Bimestrale', quarterly: 'Trimestrale', quadrimestral: 'Quadrimestrale' }
+  const totalRev  = useMemo(() => calcRevForRows(rangeRows, cols), [rangeRows, cols])
+  const totalQty2 = useMemo(() => calcQtyForRows(rangeRows, cols), [rangeRows, cols])
 
-  const periodLabel = `${MONTHS_SHORT[startMonth-1]} ${startYear} → ${MONTHS_SHORT[endMonth-1]} ${endYear}`
+  const FREQ = { monthly: 'Mensile', bimonthly: 'Bimestrale', quarterly: 'Trimestrale', quadrimestral: 'Quadrimestrale' }
+  const numMonths = cols.length
+  const prevLabel = `${MONTHS_SHORT[startMonth-1]} ${startYear-1} → ${MONTHS_SHORT[endMonth-1]} ${endYear-1}`
+  const currLabel = `${MONTHS_SHORT[startMonth-1]} ${startYear} → ${MONTHS_SHORT[endMonth-1]} ${endYear}`
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -195,7 +275,7 @@ export default function DashboardPage() {
         <p className="text-sm mt-0.5" style={{ color: 'var(--text-sub)' }}>Riepilogo forecast</p>
       </div>
 
-      {/* Filtro globale periodo */}
+      {/* Filtro globale — selettori a larghezza automatica SEMPRE */}
       <div className="card px-4 py-3 mb-6 flex items-center gap-3 flex-wrap">
         <span className="text-sm font-medium" style={{ color: 'var(--text-main)' }}>Periodo:</span>
         <select className="input text-sm" style={{ width: 'auto', minWidth: '80px' }} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
@@ -216,30 +296,26 @@ export default function DashboardPage() {
 
       {/* KPI */}
       <div className="grid grid-cols-2 gap-4 mb-6 lg:grid-cols-4">
-        <KpiCard icon={TrendingUp} label="Fatturato previsto"     value={fmtEur(totalRevenue)}          sub={periodLabel}                               color="bg-brand-600" />
-        <KpiCard icon={Package}    label="Pezzi previsti"         value={fmt(totalQty)}                  sub={periodLabel}                               color="bg-teal-500" />
-        <KpiCard icon={Users}      label="Clienti attivi"         value={customers.length}               sub="in anagrafica"                             color="bg-indigo-500" />
-        <KpiCard icon={RefreshCw}  label="Rot. media mensile/pdv" value={fmtDec(rotazioneMediaGlobale)}  sub="pezzi/mese per punto vendita"              color="bg-amber-500" />
+        <KpiCard icon={TrendingUp} label="Fatturato previsto"     value={fmtEur(totalRev)}              sub={currLabel}                    color="bg-brand-600" />
+        <KpiCard icon={Package}    label="Pezzi previsti"         value={fmt(totalQty2)}                sub={currLabel}                    color="bg-teal-500" />
+        <KpiCard icon={Users}      label="Clienti attivi"         value={customers.length}              sub="in anagrafica"                color="bg-indigo-500" />
+        <KpiCard icon={RefreshCw}  label="Rot. media mensile/pdv" value={fmtDec(rotazioneMediaGlobale)} sub="pezzi/mese per punto vendita" color="bg-amber-500" />
       </div>
 
       {/* Grafico mensile */}
       <div className="card p-5 mb-6">
         <h2 className="text-sm font-medium mb-4" style={{ color: 'var(--text-main)' }}>Andamento mensile — fatturato</h2>
         {isLoading ? (
-          <div className="h-48 flex items-center justify-center text-gray-400 text-sm">Caricamento…</div>
+          <div className="h-48 flex items-center justify-center text-sm" style={{ color: 'var(--text-muted)' }}>Caricamento…</div>
         ) : (
           <div className="flex items-end gap-1" style={{ height: '160px' }}>
             {monthlyData.map(m => {
               const barH = m.rev > 0 ? Math.max((m.rev / maxRev) * 130, 8) : 0
               return (
                 <div key={`${m.year}-${m.month}`} className="flex-1 flex flex-col items-center justify-end gap-1">
-                  {m.rev > 0 && (
-                    <span style={{ fontSize: '8px', color: '#6b7280', marginBottom: '2px', whiteSpace: 'nowrap' }}>
-                      {fmtEur(m.rev)}
-                    </span>
-                  )}
+                  {m.rev > 0 && <span style={{ fontSize: '8px', color: 'var(--text-muted)', marginBottom: '2px', whiteSpace: 'nowrap' }}>{fmtEur(m.rev)}</span>}
                   <div style={{ height: `${barH}px`, backgroundColor: 'var(--brand)', borderRadius: '4px 4px 0 0', width: '100%' }} title={fmtEur(m.rev)} />
-                  <span className="text-xs text-gray-400">{m.label}</span>
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.label}</span>
                 </div>
               )
             })}
@@ -249,12 +325,10 @@ export default function DashboardPage() {
 
       {/* Top clienti + Top prodotti */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-6" style={{ alignItems: 'start' }}>
-
-        {/* Clienti per fatturato */}
         <div className="card p-5">
           <h2 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>
             Clienti per fatturato
-            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>({byCustomer.length} totali)</span>
+            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>({byCustomer.length} totali · clicca per dettaglio)</span>
           </h2>
           {byCustomer.length === 0 ? (
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessun dato nel periodo selezionato.</p>
@@ -266,11 +340,12 @@ export default function DashboardPage() {
                     <span className="text-xs font-medium w-5 shrink-0" style={{ color: 'var(--text-muted)' }}>{i + 1}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs truncate" style={{ color: 'var(--text-main)' }}>{c.name}</span>
-                        <span className="text-xs font-medium ml-2 shrink-0" style={{ color: 'var(--text-main)' }}>{fmtEur(c.revenue)}</span>
+                        <span className="text-xs truncate cursor-pointer hover:underline" style={{ color: 'var(--brand)' }}
+                          onClick={() => setSelectedCustomer(c.name)}>{c.name}</span>
+                        <span className="text-xs font-medium ml-2 shrink-0" style={{ color: 'var(--text-main)' }}>{fmtEur(c.curr)}</span>
                       </div>
                       <div className="h-1 rounded mt-1" style={{ backgroundColor: 'var(--border)' }}>
-                        <div className="h-1 bg-brand-400 rounded" style={{ width: `${(c.revenue / (byCustomer[0]?.revenue || 1)) * 100}%` }} />
+                        <div className="h-1 bg-brand-400 rounded" style={{ width: `${(c.curr / (byCustomer[0]?.curr || 1)) * 100}%` }} />
                       </div>
                     </div>
                   </div>
@@ -280,7 +355,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Prodotti per pezzi con rotazione media */}
         <div className="card p-5">
           <h2 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>
             Prodotti per pezzi
@@ -298,16 +372,12 @@ export default function DashboardPage() {
                       <div className="flex justify-between items-center">
                         <span className="text-xs truncate" style={{ color: 'var(--text-main)' }}>{p.name}</span>
                         <div className="flex items-center gap-2 ml-2 shrink-0">
-                          {p.rotMedia > 0 && (
-                            <span className="text-xs text-amber-500 font-medium" title="Rotazione media mensile/pdv">
-                              {fmtDec(p.rotMedia)} rot/mese
-                            </span>
-                          )}
-                          <span className="text-xs font-medium" style={{ color: 'var(--text-main)' }}>{fmt(p.qty)} pz</span>
+                          {p.rotMedia > 0 && <span className="text-xs text-amber-500 font-medium">{fmtDec(p.rotMedia)} rot/mese</span>}
+                          <span className="text-xs font-medium" style={{ color: 'var(--text-main)' }}>{fmt(p.curr)} pz</span>
                         </div>
                       </div>
                       <div className="h-1 rounded mt-1" style={{ backgroundColor: 'var(--border)' }}>
-                        <div className="h-1 bg-teal-400 rounded" style={{ width: `${(p.qty / (byProduct[0]?.qty || 1)) * 100}%` }} />
+                        <div className="h-1 bg-teal-400 rounded" style={{ width: `${(p.curr / (byProduct[0]?.curr || 1)) * 100}%` }} />
                       </div>
                     </div>
                   </div>
@@ -318,7 +388,78 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Rotazioni in scadenza — fisso, non filtrato per periodo */}
+      {/* Confronto anno precedente */}
+      <div className="card p-5 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-medium" style={{ color: 'var(--text-main)' }}>
+            Confronto anno precedente
+            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>{prevLabel} vs {currLabel}</span>
+          </h2>
+          <div className="flex gap-1">
+            {['clienti', 'prodotti'].map(tab => (
+              <button key={tab} onClick={() => setConfrontoTab(tab)}
+                className="px-3 py-1 rounded text-xs font-medium transition-colors capitalize"
+                style={{
+                  backgroundColor: confrontoTab === tab ? 'var(--brand)' : 'var(--alt-row)',
+                  color: confrontoTab === tab ? 'white' : 'var(--text-sub)',
+                }}>
+                {tab}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {confrontoTab === 'clienti' ? (
+          <div style={{ maxHeight: '320px', overflowY: 'scroll' }}>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                  <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Cliente</th>
+                  <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear - 1}</th>
+                  <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear}</th>
+                  <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Var. %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                {byCustomer.map(c => (
+                  <tr key={c.name}>
+                    <td className="py-2 cursor-pointer hover:underline" style={{ color: 'var(--brand)' }}
+                      onClick={() => setSelectedCustomer(c.name)}>{c.name}</td>
+                    <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{fmtEur(c.prev)}</td>
+                    <td className="py-2 text-right font-medium" style={{ color: 'var(--text-main)' }}>{fmtEur(c.curr)}</td>
+                    <td className="py-2 text-right"><DeltaBadge curr={c.curr} prev={c.prev} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ maxHeight: '320px', overflowY: 'scroll' }}>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                  <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Prodotto</th>
+                  <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear - 1} (pz)</th>
+                  <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear} (pz)</th>
+                  <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Var. %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                {byProduct.map(p => (
+                  <tr key={p.name}>
+                    <td className="py-2" style={{ color: 'var(--text-main)' }}>{p.name}</td>
+                    <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{fmt(p.prev)}</td>
+                    <td className="py-2 text-right font-medium" style={{ color: 'var(--text-main)' }}>{fmt(p.curr)}</td>
+                    <td className="py-2 text-right"><DeltaBadge curr={p.curr} prev={p.prev} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Rotazioni in scadenza */}
       <div className="card p-5">
         <h2 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>
           Rotazioni in scadenza nei prossimi 60 giorni
@@ -365,6 +506,10 @@ export default function DashboardPage() {
           </table>
         )}
       </div>
+
+      {selectedCustomer && (
+        <CustomerModal customerName={selectedCustomer} rows={rangeRows} cols={cols} onClose={() => setSelectedCustomer(null)} />
+      )}
     </div>
   )
 }
