@@ -23,7 +23,6 @@ function fmtEur(n) {
   return '€ ' + Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// Genera lista di {year, month, key, label} per un range continuo
 function buildMonthRange(startYear, startMonth, endYear, endMonth) {
   const cols = []
   let y = startYear, m = startMonth
@@ -35,25 +34,18 @@ function buildMonthRange(startYear, startMonth, endYear, endMonth) {
   return cols
 }
 
-// Lookup valore da rows indicizzato per (header_id -> row) e col
-function getVal(rowsByHeader, headerId, monthKey) {
-  const row = rowsByHeader[headerId]
-  return row ? Number(row[monthKey] || 0) : 0
-}
-
 function SortIcon({ col, sortCol, sortDir }) {
-  if (sortCol !== col) return <ChevronsUpDown size={11} className="inline ml-1 text-gray-300" />
+  if (sortCol !== col) return <ChevronsUpDown size={11} className="inline ml-1" style={{ color: 'var(--text-muted)' }} />
   return sortDir === 'asc'
-    ? <ChevronUp size={11} className="inline ml-1 text-brand-600" />
-    : <ChevronDown size={11} className="inline ml-1 text-brand-600" />
+    ? <ChevronUp size={11} className="inline ml-1" style={{ color: 'var(--brand)' }} />
+    : <ChevronDown size={11} className="inline ml-1" style={{ color: 'var(--brand)' }} />
 }
 
 function SortableTh({ col, label, sortCol, sortDir, onSort, className }) {
   return (
-    <th
-      className={`px-2 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-gray-800 hover:bg-gray-100 transition-colors ${className}`}
-      onClick={() => onSort(col)}
-    >
+    <th className={`px-2 py-3 font-medium cursor-pointer select-none transition-colors ${className}`}
+      style={{ color: 'var(--text-sub)' }}
+      onClick={() => onSort(col)}>
       {label}<SortIcon col={col} sortCol={sortCol} sortDir={sortDir} />
     </th>
   )
@@ -65,25 +57,25 @@ function EditableCell({ value, onSave }) {
 
   if (editing) {
     return (
-      <input
-        type="number" min="0" step="1" autoFocus
-        value={val}
+      <input type="number" min="0" step="1" autoFocus value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={() => { setEditing(false); onSave(Number(val) || 0) }}
         onKeyDown={e => {
           if (e.key === 'Enter')  { setEditing(false); onSave(Number(val) || 0) }
           if (e.key === 'Escape') { setEditing(false); setVal(value ?? 0) }
         }}
-        className="w-16 text-right text-xs px-1 py-0.5 border border-brand-400 rounded outline-none bg-brand-50"
+        className="w-16 text-right text-xs px-1 py-0.5 rounded outline-none"
+        style={{ border: `1px solid var(--brand)`, backgroundColor: 'var(--brand-50)', color: 'var(--text-main)' }}
       />
     )
   }
   return (
-    <span
-      onClick={() => setEditing(true)}
-      className="cursor-pointer hover:bg-brand-50 hover:text-brand-700 px-1 py-0.5 rounded transition-colors block text-right"
-      title="Clicca per modificare"
-    >
+    <span onClick={() => setEditing(true)}
+      className="cursor-pointer px-1 py-0.5 rounded transition-colors block text-right"
+      style={{ color: 'var(--text-main)' }}
+      onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--brand-50)'; e.currentTarget.style.color = 'var(--brand)' }}
+      onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-main)' }}
+      title="Clicca per modificare">
       {fmt(val)}
     </span>
   )
@@ -101,8 +93,7 @@ function AddForecastRow({ onClose }) {
   const createHeader             = useCreateForecastHeader()
 
   async function handleSubmit(e) {
-    e.preventDefault()
-    setError('')
+    e.preventDefault(); setError('')
     if (!customerId) return setError('Seleziona un cliente.')
     if (!productId)  return setError('Seleziona un prodotto.')
     if (!price)      return setError('Nessun listino attivo per questa combinazione.')
@@ -110,11 +101,9 @@ function AddForecastRow({ onClose }) {
       await createHeader.mutateAsync({ year, customer_id: Number(customerId), product_id: Number(productId), avg_price_snapshot: price.avg_price })
       onClose()
     } catch (err) {
-      if (err.message?.includes('forecast_headers_unique')) {
-        setError('Esiste già una riga forecast per questa combinazione in questo anno.')
-      } else {
-        setError('Errore nel salvataggio. Riprova.')
-      }
+      setError(err.message?.includes('forecast_headers_unique')
+        ? 'Esiste già una riga forecast per questa combinazione in questo anno.'
+        : 'Errore nel salvataggio. Riprova.')
     }
   }
 
@@ -168,6 +157,8 @@ function sortRows(rows, col, dir) {
   })
 }
 
+const SEL_STYLE = { width: 'auto' }
+
 export default function ForecastPage() {
   const [startMonth, setStartMonth]         = useState(1)
   const [startYear,  setStartYear]          = useState(CURRENT_YEAR)
@@ -188,13 +179,8 @@ export default function ForecastPage() {
   const updateLine                     = useUpdateForecastLine()
   const deleteHeader                   = useDeleteForecastHeader()
 
-  // Colonne del range continuo
-  const cols = useMemo(
-    () => buildMonthRange(startYear, startMonth, endYear, endMonth),
-    [startYear, startMonth, endYear, endMonth]
-  )
+  const cols = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
 
-  // Indice rows per header_id
   const rowsByHeader = useMemo(() => {
     const map = {}
     for (const r of rows) map[r.header_id] = r
@@ -209,8 +195,7 @@ export default function ForecastPage() {
   const rotationProductIds = useMemo(() => {
     if (!filterRotation) return null
     const rot = rotations.find(r => String(r.id) === filterRotation)
-    if (!rot) return null
-    return new Set(rot.products.map(p => p.product_id))
+    return rot ? new Set(rot.products.map(p => p.product_id)) : null
   }, [filterRotation, rotations])
 
   const filtered = useMemo(() => {
@@ -244,68 +229,62 @@ export default function ForecastPage() {
     await deleteHeader.mutateAsync({ id: row.header_id, year: row.year })
   }
 
-  // Totali per colonna
   const colTotals = useMemo(() => cols.map(c => ({
     ...c,
     total: sorted.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0), 0)
   })), [sorted, cols])
 
   const thProps = { sortCol, sortDir, onSort: handleSort }
+  const hasFilters = search || filterCustomer || filterProduct || filterCategory || filterRotation
 
   return (
     <div>
       <PageHeader
         title="Forecast"
         description="Previsioni di vendita per cliente e prodotto"
-        action={
-          <button className="btn-primary" onClick={() => setModalOpen(true)}>
-            <Plus size={16} /> Aggiungi riga
-          </button>
-        }
+        action={<button className="btn-primary" onClick={() => setModalOpen(true)}><Plus size={16} /> Aggiungi riga</button>}
       />
 
       {/* Filtri */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        {/* Range mese/anno */}
-        <select className="input w-24" value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
+        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '80px' }} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
           {MONTHS_SHORT.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
         </select>
-        <select className="input w-20" value={startYear} onChange={e => setStartYear(Number(e.target.value))}>
+        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '70px' }} value={startYear} onChange={e => setStartYear(Number(e.target.value))}>
           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <span className="text-gray-400">→</span>
-        <select className="input w-24" value={endMonth} onChange={e => setEndMonth(Number(e.target.value))}>
+        <span style={{ color: 'var(--text-muted)' }}>→</span>
+        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '80px' }} value={endMonth} onChange={e => setEndMonth(Number(e.target.value))}>
           {MONTHS_SHORT.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
         </select>
-        <select className="input w-20" value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
+        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '70px' }} value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
 
-        {/* Cerca */}
         <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input className="input pl-8 w-48" placeholder="Cerca…" value={search} onChange={e => setSearch(e.target.value)} />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+          <input className="input pl-8" style={{ width: '180px' }} placeholder="Cerca…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
 
-        <select className="input w-44" value={filterCustomer} onChange={e => setFilterCustomer(e.target.value)}>
+        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '140px' }} value={filterCustomer} onChange={e => setFilterCustomer(e.target.value)}>
           <option value="">Tutti i clienti</option>
           {[...new Set(rows.map(r => r.company_name))].sort().map(n => <option key={n} value={n}>{n}</option>)}
         </select>
-        <select className="input w-44" value={filterProduct} onChange={e => setFilterProduct(e.target.value)}>
+        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '140px' }} value={filterProduct} onChange={e => setFilterProduct(e.target.value)}>
           <option value="">Tutti i prodotti</option>
           {[...new Set(rows.map(r => r.product_description))].sort().map(n => <option key={n} value={n}>{n}</option>)}
         </select>
-        <select className="input w-44" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '140px' }} value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
           <option value="">Tutte le categorie</option>
           {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
         </select>
-        <select className="input w-44" value={filterRotation} onChange={e => { setFilterRotation(e.target.value); setFilterCustomer(''); setFilterProduct('') }}>
+        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '140px' }} value={filterRotation} onChange={e => { setFilterRotation(e.target.value); setFilterCustomer(''); setFilterProduct('') }}>
           <option value="">Tutte le rotazioni</option>
           {rotations.map(r => <option key={r.id} value={String(r.id)}>{r.company_name} — {r.product_count} prodotti</option>)}
         </select>
 
-        {(search || filterCustomer || filterProduct || filterCategory || filterRotation) && (
-          <button className="text-sm text-gray-400 hover:text-gray-600"
+        {hasFilters && (
+          <button className="text-sm hover:underline" style={{ color: 'var(--text-muted)' }}
             onClick={() => { setSearch(''); setFilterCustomer(''); setFilterProduct(''); setFilterCategory(''); setFilterRotation('') }}>
             Pulisci
           </button>
@@ -315,65 +294,56 @@ export default function ForecastPage() {
       {/* Griglia */}
       <div className="card overflow-x-auto">
         {isLoading ? (
-          <div className="flex items-center justify-center py-16 text-gray-400 text-sm">Caricamento…</div>
+          <div className="flex items-center justify-center py-16 text-sm" style={{ color: 'var(--text-muted)' }}>Caricamento…</div>
         ) : sorted.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400 text-sm gap-2">
+          <div className="flex flex-col items-center justify-center py-16 text-sm gap-2" style={{ color: 'var(--text-muted)' }}>
             <span>Nessuna riga trovata.</span>
-            {!search && !filterCustomer && !filterProduct && !filterCategory && !filterRotation && (
-              <button className="btn-primary mt-2" onClick={() => setModalOpen(true)}>
-                <Plus size={15} /> Aggiungi la prima riga
-              </button>
-            )}
+            {!hasFilters && <button className="btn-primary mt-2" onClick={() => setModalOpen(true)}><Plus size={15} /> Aggiungi la prima riga</button>}
           </div>
         ) : (
           <table className="w-full text-xs" style={{ minWidth: `${500 + cols.length * 60}px` }}>
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
+              <tr className="border-b" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--alt-row)' }}>
                 <SortableTh col="ean"                 label="EAN"             {...thProps} className="text-left min-w-28" />
                 <SortableTh col="product_description" label="Desc. Forecast"  {...thProps} className="text-left min-w-40" />
-                <SortableTh col="company_name"        label="Ragione Sociale" {...thProps} className="text-left min-w-36 sticky left-0 bg-gray-50" />
+                <SortableTh col="company_name"        label="Ragione Sociale" {...thProps} className="text-left min-w-36 sticky left-0" style={{ backgroundColor: 'var(--alt-row)' }} />
                 <SortableTh col="avg_price_snapshot"  label="Listino Medio"   {...thProps} className="text-right min-w-20" />
                 {cols.map(c => (
-                  <th key={`${c.year}-${c.month}`} className="text-right px-2 py-3 font-medium text-gray-500 min-w-14">{c.label}</th>
+                  <th key={`${c.year}-${c.month}`} className="text-right px-2 py-3 font-medium min-w-14" style={{ color: 'var(--text-sub)' }}>{c.label}</th>
                 ))}
-                <SortableTh col="total_qty"     label="Pezzi"    {...thProps} className="text-right min-w-20 sticky right-16 bg-gray-50 border-l border-gray-100" />
-                <SortableTh col="total_revenue" label="Valore €"  {...thProps} className="text-right min-w-24 sticky right-8 bg-gray-50" />
-                <th className="px-3 py-3 min-w-8 sticky right-0 bg-gray-50" />
+                <SortableTh col="total_qty"     label="Pezzi"   {...thProps} className="text-right min-w-20 sticky right-16 border-l" />
+                <SortableTh col="total_revenue" label="Valore €" {...thProps} className="text-right min-w-24 sticky right-8" />
+                <th className="px-3 py-3 min-w-8 sticky right-0" style={{ backgroundColor: 'var(--alt-row)' }} />
               </tr>
             </thead>
             <tbody>
               {sorted.map((row, idx) => {
-                const bg = idx % 2 === 1 ? '#f3f4f6' : '#ffffff'
-                const tdStyle = { backgroundColor: bg }
+                const bg = idx % 2 === 1 ? 'var(--alt-row)' : 'var(--bg-card)'
                 const rowTotQty = cols.filter(c => c.year === row.year).reduce((s, c) => s + Number(row[c.key] || 0), 0)
                 const rowTotRev = rowTotQty * Number(row.avg_price_snapshot || 0)
                 return (
-                  <tr key={row.header_id} style={{ backgroundColor: bg }}
-                    className="border-b border-gray-50 transition-colors"
-                    onMouseEnter={e => Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = '#eeffee')}
-                    onMouseLeave={e => Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = bg)}
-                  >
-                    <td style={tdStyle} className="px-3 py-2 font-mono text-gray-500">{row.ean}</td>
-                    <td style={tdStyle} className="px-3 py-2 text-gray-700">{row.product_description}</td>
-                    <td style={tdStyle} className="px-3 py-2 font-medium text-gray-900 sticky left-0">{row.company_name}</td>
-                    <td style={tdStyle} className="px-3 py-2 text-right text-gray-500">{Number(row.avg_price_snapshot || 0).toFixed(2)}</td>
-                    {cols.map(c => {
-                      const val = c.year === row.year ? Number(row[c.key] || 0) : null
-                      return (
-                        <td key={`${c.year}-${c.month}`} style={tdStyle} className="px-1 py-2">
-                          {c.year === row.year
-                            ? <EditableCell value={val} onSave={qty => handleCellSave(row, c, qty)} />
-                            : <span className="block text-right text-gray-200">—</span>
-                          }
-                        </td>
-                      )
-                    })}
-                    <td style={tdStyle} className="px-3 py-2 text-right font-semibold text-gray-900 sticky right-16 border-l border-gray-100">{fmt(rowTotQty)}</td>
-                    <td style={tdStyle} className="px-3 py-2 text-right font-semibold text-gray-900 sticky right-8">{fmtEur(rowTotRev)}</td>
-                    <td style={tdStyle} className="px-3 py-2 sticky right-0">
-                      <button onClick={() => handleDelete(row)} className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors" title="Elimina">
-                        <Trash2 size={13} />
-                      </button>
+                  <tr key={row.header_id} style={{ backgroundColor: bg, borderBottom: `1px solid var(--border)` }}
+                    onMouseEnter={e => Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = 'var(--hover-row)')}
+                    onMouseLeave={e => Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = bg)}>
+                    <td className="px-3 py-2 font-mono" style={{ color: 'var(--text-muted)', backgroundColor: bg }}>{row.ean}</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--text-sub)', backgroundColor: bg }}>{row.product_description}</td>
+                    <td className="px-3 py-2 font-medium sticky left-0" style={{ color: 'var(--text-main)', backgroundColor: bg }}>{row.company_name}</td>
+                    <td className="px-3 py-2 text-right" style={{ color: 'var(--text-muted)', backgroundColor: bg }}>{Number(row.avg_price_snapshot || 0).toFixed(2)}</td>
+                    {cols.map(c => (
+                      <td key={`${c.year}-${c.month}`} className="px-1 py-2" style={{ backgroundColor: bg }}>
+                        {c.year === row.year
+                          ? <EditableCell value={Number(row[c.key] || 0)} onSave={qty => handleCellSave(row, c, qty)} />
+                          : <span className="block text-right" style={{ color: 'var(--text-muted)' }}>—</span>
+                        }
+                      </td>
+                    ))}
+                    <td className="px-3 py-2 text-right font-semibold sticky right-16 border-l" style={{ color: 'var(--text-main)', backgroundColor: bg, borderColor: 'var(--border)' }}>{fmt(rowTotQty)}</td>
+                    <td className="px-3 py-2 text-right font-semibold sticky right-8" style={{ color: 'var(--text-main)', backgroundColor: bg }}>{fmtEur(rowTotRev)}</td>
+                    <td className="px-3 py-2 sticky right-0" style={{ backgroundColor: bg }}>
+                      <button onClick={() => handleDelete(row)} className="p-1 rounded transition-colors" style={{ color: 'var(--text-muted)' }}
+                        onMouseEnter={e => { e.currentTarget.style.color = '#dc2626'; e.currentTarget.style.backgroundColor = '#fee2e2' }}
+                        onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
+                        title="Elimina"><Trash2 size={13} /></button>
                     </td>
                   </tr>
                 )
@@ -381,16 +351,16 @@ export default function ForecastPage() {
             </tbody>
             {sorted.length > 1 && (
               <tfoot>
-                <tr className="border-t-2 border-gray-200 bg-gray-100 font-semibold">
-                  <td className="px-3 py-2 text-gray-700" colSpan={4}>Totale ({sorted.length} righe)</td>
-                  {colTotals.map(c => <td key={`${c.year}-${c.month}`} className="px-2 py-2 text-right text-gray-900">{fmt(c.total)}</td>)}
-                  <td className="px-3 py-2 text-right text-gray-900 sticky right-16 bg-gray-100 border-l border-gray-200">
+                <tr className="border-t-2 font-semibold" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--alt-row)' }}>
+                  <td className="px-3 py-2" style={{ color: 'var(--text-sub)' }} colSpan={4}>Totale ({sorted.length} righe)</td>
+                  {colTotals.map(c => <td key={`${c.year}-${c.month}`} className="px-2 py-2 text-right" style={{ color: 'var(--text-main)' }}>{fmt(c.total)}</td>)}
+                  <td className="px-3 py-2 text-right sticky right-16 border-l" style={{ color: 'var(--text-main)', backgroundColor: 'var(--alt-row)', borderColor: 'var(--border)' }}>
                     {fmt(sorted.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0), 0))}
                   </td>
-                  <td className="px-3 py-2 text-right text-gray-900 sticky right-8 bg-gray-100">
+                  <td className="px-3 py-2 text-right sticky right-8" style={{ color: 'var(--text-main)', backgroundColor: 'var(--alt-row)' }}>
                     {fmtEur(sorted.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0) * Number(r.avg_price_snapshot || 0), 0))}
                   </td>
-                  <td className="sticky right-0 bg-gray-100" />
+                  <td className="sticky right-0" style={{ backgroundColor: 'var(--alt-row)' }} />
                 </tr>
               </tfoot>
             )}
@@ -399,7 +369,7 @@ export default function ForecastPage() {
       </div>
 
       {sorted.length > 0 && (
-        <p className="text-xs text-gray-400 mt-2 px-1">
+        <p className="text-xs mt-2 px-1" style={{ color: 'var(--text-muted)' }}>
           {sorted.length} rig{sorted.length === 1 ? 'a' : 'he'} · Clicca su un numero per modificarlo · Clicca sull'intestazione per ordinare
         </p>
       )}

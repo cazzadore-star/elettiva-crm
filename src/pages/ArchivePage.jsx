@@ -18,30 +18,14 @@ function fmtEur(n) {
 async function exportArchiveToExcel(archive) {
   const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/xlsx.mjs')
   const rows = archive.data
-  const headers = [
-    'EAN', 'Descrizione', 'Ragione Sociale', 'Listino Medio',
-    ...MONTHS_IT, 'Totale Pezzi', 'Totale Valore'
-  ]
-  const data = rows.map(r => [
-    r.ean, r.product_description, r.company_name,
-    Number(r.avg_price_snapshot || 0),
-    ...MONTH_KEYS.map(mk => Number(r[mk] || 0)),
-    Number(r.total_qty || 0), Number(r.total_revenue || 0),
-  ])
-  const totals = [
-    '', '', 'TOTALE', '',
-    ...MONTH_KEYS.map(mk => rows.reduce((s, r) => s + Number(r[mk] || 0), 0)),
-    rows.reduce((s, r) => s + Number(r.total_qty || 0), 0),
-    rows.reduce((s, r) => s + Number(r.total_revenue || 0), 0),
-  ]
+  const headers = ['EAN','Descrizione','Ragione Sociale','Listino Medio',...MONTHS_IT,'Totale Pezzi','Totale Valore']
+  const data = rows.map(r => [r.ean, r.product_description, r.company_name, Number(r.avg_price_snapshot || 0), ...MONTH_KEYS.map(mk => Number(r[mk] || 0)), Number(r.total_qty || 0), Number(r.total_revenue || 0)])
+  const totals = ['','','TOTALE','', ...MONTH_KEYS.map(mk => rows.reduce((s, r) => s + Number(r[mk] || 0), 0)), rows.reduce((s, r) => s + Number(r.total_qty || 0), 0), rows.reduce((s, r) => s + Number(r.total_revenue || 0), 0)]
   const ws = XLSX.utils.aoa_to_sheet([headers, ...data, totals])
-  ws['!cols'] = [
-    { wch: 16 }, { wch: 30 }, { wch: 28 }, { wch: 12 },
-    ...MONTHS_IT.map(() => ({ wch: 10 })), { wch: 12 }, { wch: 14 },
-  ]
+  ws['!cols'] = [{ wch:16 },{ wch:30 },{ wch:28 },{ wch:12 },...MONTHS_IT.map(()=>({ wch:10 })),{ wch:12 },{ wch:14 }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, `Forecast ${archive.name}`)
-  XLSX.writeFile(wb, `archivio_forecast_${archive.id}.xlsx`)
+  XLSX.writeFile(wb, `archivio_${archive.id}.xlsx`)
 }
 
 // ── Modal anteprima ──────────────────────────────────────────
@@ -65,67 +49,63 @@ function ArchivePreviewModal({ archiveId, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-7xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative rounded-xl shadow-xl w-full max-w-7xl max-h-[90vh] flex flex-col" style={{ backgroundColor: 'var(--bg-card)' }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
           <div>
-            <h2 className="font-semibold text-gray-900">{archive?.name}</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <h2 className="font-semibold" style={{ color: 'var(--text-main)' }}>{archive?.name}</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
               {rows.length} righe · archiviato il{' '}
-              {archive && new Date(archive.created_at).toLocaleDateString('it-IT', {
-                day: 'numeric', month: 'long', year: 'numeric',
-                hour: '2-digit', minute: '2-digit'
-              })}
+              {archive && new Date(archive.created_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={handleExport} disabled={exporting || isLoading} className="btn-primary text-sm">
-              {exporting
-                ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <><Download size={14} /> Esporta Excel</>
-              }
+              {exporting ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Download size={14} /> Esporta Excel</>}
             </button>
-            <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">
+            <button onClick={onClose} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--alt-row)' }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent' }}>
               <X size={18} />
             </button>
           </div>
         </div>
         <div className="overflow-auto flex-1 p-4">
           {isLoading ? (
-            <div className="flex items-center justify-center py-16 text-gray-400 text-sm">Caricamento…</div>
+            <div className="flex items-center justify-center py-16 text-sm" style={{ color: 'var(--text-muted)' }}>Caricamento…</div>
           ) : (
             <table className="w-full text-xs" style={{ minWidth: '1200px' }}>
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left px-3 py-2 font-medium text-gray-500">Cliente</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-500">Prodotto</th>
-                  <th className="text-right px-2 py-2 font-medium text-gray-500">€/pz</th>
-                  {MONTHS_SHORT.map(m => <th key={m} className="text-right px-2 py-2 font-medium text-gray-500">{m}</th>)}
-                  <th className="text-right px-3 py-2 font-medium text-gray-500">Tot. pz</th>
-                  <th className="text-right px-3 py-2 font-medium text-gray-500">Tot. €</th>
+                <tr className="border-b" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--alt-row)' }}>
+                  <th className="text-left px-3 py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Cliente</th>
+                  <th className="text-left px-3 py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Prodotto</th>
+                  <th className="text-right px-2 py-2 font-medium" style={{ color: 'var(--text-sub)' }}>€/pz</th>
+                  {MONTHS_SHORT.map(m => <th key={m} className="text-right px-2 py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{m}</th>)}
+                  <th className="text-right px-3 py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Tot. pz</th>
+                  <th className="text-right px-3 py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Tot. €</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, idx) => {
-                  const bg = idx % 2 === 1 ? '#f3f4f6' : '#ffffff'
+                  const bg = idx % 2 === 1 ? 'var(--alt-row)' : 'var(--bg-card)'
                   return (
-                    <tr key={idx} style={{ backgroundColor: bg }} className="border-b border-gray-50">
-                      <td className="px-3 py-1.5 text-gray-900">{row.company_name}</td>
-                      <td className="px-3 py-1.5 text-gray-700">{row.product_description}</td>
-                      <td className="px-3 py-1.5 text-right text-gray-500">{Number(row.avg_price_snapshot || 0).toFixed(2)}</td>
-                      {MONTH_KEYS.map(mk => <td key={mk} className="px-2 py-1.5 text-right text-gray-800">{fmt(row[mk])}</td>)}
-                      <td className="px-3 py-1.5 text-right font-medium">{fmt(row.total_qty)}</td>
-                      <td className="px-3 py-1.5 text-right font-medium">{fmtEur(row.total_revenue)}</td>
+                    <tr key={idx} style={{ backgroundColor: bg, borderBottom: `1px solid var(--border)` }}>
+                      <td className="px-3 py-1.5" style={{ color: 'var(--text-main)' }}>{row.company_name}</td>
+                      <td className="px-3 py-1.5" style={{ color: 'var(--text-sub)' }}>{row.product_description}</td>
+                      <td className="px-3 py-1.5 text-right" style={{ color: 'var(--text-muted)' }}>{Number(row.avg_price_snapshot || 0).toFixed(2)}</td>
+                      {MONTH_KEYS.map(mk => <td key={mk} className="px-2 py-1.5 text-right" style={{ color: 'var(--text-main)' }}>{fmt(row[mk])}</td>)}
+                      <td className="px-3 py-1.5 text-right font-medium" style={{ color: 'var(--text-main)' }}>{fmt(row.total_qty)}</td>
+                      <td className="px-3 py-1.5 text-right font-medium" style={{ color: 'var(--text-main)' }}>{fmtEur(row.total_revenue)}</td>
                     </tr>
                   )
                 })}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-gray-200 bg-gray-100 font-semibold">
-                  <td className="px-3 py-2 text-gray-700" colSpan={3}>Totale</td>
-                  {MONTH_KEYS.map(mk => <td key={mk} className="px-2 py-2 text-right">{fmt(totals[mk])}</td>)}
-                  <td className="px-3 py-2 text-right">{fmt(totals.total_qty)}</td>
-                  <td className="px-3 py-2 text-right">{fmtEur(totals.total_revenue)}</td>
+                <tr className="border-t-2 font-semibold" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--alt-row)' }}>
+                  <td className="px-3 py-2" colSpan={3} style={{ color: 'var(--text-sub)' }}>Totale</td>
+                  {MONTH_KEYS.map(mk => <td key={mk} className="px-2 py-2 text-right" style={{ color: 'var(--text-main)' }}>{fmt(totals[mk])}</td>)}
+                  <td className="px-3 py-2 text-right" style={{ color: 'var(--text-main)' }}>{fmt(totals.total_qty)}</td>
+                  <td className="px-3 py-2 text-right" style={{ color: 'var(--text-main)' }}>{fmtEur(totals.total_revenue)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -146,69 +126,46 @@ function NewArchiveModal({ onClose, onSave }) {
   const [error,  setError]    = useState('')
 
   async function handleSubmit(e) {
-    e.preventDefault()
-    setError('')
+    e.preventDefault(); setError('')
     if (!name.trim())    return setError("Inserisci un nome per l'archivio.")
     if (!periodStart)    return setError('Inserisci la data di inizio.')
     if (!periodEnd)      return setError('Inserisci la data di fine.')
     if (periodEnd < periodStart) return setError('La data di fine deve essere successiva alla data di inizio.')
     setSaving(true)
-    try {
-      await onSave({ name: name.trim(), periodStart, periodEnd })
-      onClose()
-    } catch {
-      setError("Errore durante l'archiviazione. Riprova.")
-    } finally {
-      setSaving(false)
-    }
+    try { await onSave({ name: name.trim(), periodStart, periodEnd }); onClose() }
+    catch { setError("Errore durante l'archiviazione. Riprova.") }
+    finally { setSaving(false) }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900">Archivia Forecast</h2>
-          <button onClick={onClose} className="p-1 rounded text-gray-400 hover:text-gray-600">✕</button>
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative rounded-xl shadow-xl w-full max-w-md" style={{ backgroundColor: 'var(--bg-card)' }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <h2 className="font-semibold" style={{ color: 'var(--text-main)' }}>Archivia Forecast</h2>
+          <button onClick={onClose} className="p-1 rounded" style={{ color: 'var(--text-muted)' }}>✕</button>
         </div>
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Data inizio</label>
-              <input
-                type="date" className="input"
-                value={periodStart}
-                onChange={e => setPeriodStart(e.target.value)}
-              />
+              <input type="date" className="input" value={periodStart} onChange={e => setPeriodStart(e.target.value)} />
             </div>
             <div>
               <label className="label">Data fine</label>
-              <input
-                type="date" className="input"
-                value={periodEnd}
-                onChange={e => setPeriodEnd(e.target.value)}
-              />
+              <input type="date" className="input" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} />
             </div>
           </div>
           <div>
             <label className="label">Nome archivio</label>
-            <input
-              className="input" autoFocus
-              value={name}
-              onChange={e => setName(e.target.value)}
-            />
-            <p className="text-xs text-gray-400 mt-1">Usa un nome che ti aiuti a riconoscere il momento della snapshot.</p>
+            <input className="input" value={name} onChange={e => setName(e.target.value)} autoFocus />
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Usa un nome che ti aiuti a riconoscere il momento della snapshot.</p>
           </div>
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
-          )}
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" className="btn-secondary" onClick={onClose}>Annulla</button>
             <button type="submit" className="btn-primary" disabled={saving}>
-              {saving
-                ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <><Archive size={14} /> Archivia ora</>
-              }
+              {saving ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Archive size={14} /> Archivia ora</>}
             </button>
           </div>
         </form>
@@ -219,8 +176,8 @@ function NewArchiveModal({ onClose, onSave }) {
 
 // ── Pagina principale ────────────────────────────────────────
 export default function ArchivePage() {
-  const [newModalOpen,      setNewModalOpen]      = useState(false)
-  const [previewArchiveId,  setPreviewArchiveId]  = useState(null)
+  const [newModalOpen,     setNewModalOpen]     = useState(false)
+  const [previewArchiveId, setPreviewArchiveId] = useState(null)
 
   const { data: archives = [], isLoading } = useArchives()
   const createArchive = useCreateArchive()
@@ -245,12 +202,12 @@ export default function ArchivePage() {
 
       <div className="card overflow-hidden">
         {isLoading ? (
-          <div className="flex items-center justify-center py-16 text-gray-400 text-sm">Caricamento…</div>
+          <div className="flex items-center justify-center py-16 text-sm" style={{ color: 'var(--text-muted)' }}>Caricamento…</div>
         ) : archives.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400 text-sm gap-2">
-            <Archive size={32} className="text-gray-200" />
+          <div className="flex flex-col items-center justify-center py-16 text-sm gap-2" style={{ color: 'var(--text-muted)' }}>
+            <Archive size={32} style={{ color: 'var(--border)' }} />
             <span>Nessun archivio creato.</span>
-            <p className="text-xs text-gray-300 max-w-xs text-center">
+            <p className="text-xs max-w-xs text-center" style={{ color: 'var(--text-muted)' }}>
               Archivia il forecast per salvare una fotografia dei dati in questo momento.
             </p>
             <button className="btn-primary mt-2" onClick={() => setNewModalOpen(true)}>
@@ -260,43 +217,40 @@ export default function ArchivePage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-4 py-3 font-medium text-gray-500">Nome</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-500">Periodo</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-500">Data archiviazione</th>
+              <tr className="border-b" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--alt-row)' }}>
+                <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Nome</th>
+                <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Periodo</th>
+                <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Data archiviazione</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody>
               {archives.map((archive, idx) => {
-                const bg = idx % 2 === 1 ? '#f3f4f6' : '#ffffff'
+                const bg = idx % 2 === 1 ? 'var(--alt-row)' : 'var(--bg-card)'
                 return (
-                  <tr key={archive.id} style={{ backgroundColor: bg }}
-                    onMouseEnter={e => Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = '#eeffee')}
-                    onMouseLeave={e => Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = bg)}
-                    className="transition-colors"
-                  >
-                    <td className="px-4 py-3 font-medium text-gray-900">{archive.name}</td>
-                    <td className="px-4 py-3 text-gray-600 text-xs">
+                  <tr key={archive.id} style={{ backgroundColor: bg, borderBottom: `1px solid var(--border)` }}
+                    onMouseEnter={e => Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = 'var(--hover-row)')}
+                    onMouseLeave={e => Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = bg)}>
+                    <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-main)' }}>{archive.name}</td>
+                    <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-sub)' }}>
                       {archive.period_start && new Date(archive.period_start).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}
-                      {archive.period_end   && <> → {new Date(archive.period_end).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</>}
+                      {archive.period_end && <> → {new Date(archive.period_end).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</>}
                     </td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {new Date(archive.created_at).toLocaleDateString('it-IT', {
-                        day: 'numeric', month: 'long', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit'
-                      })}
+                    <td className="px-4 py-3" style={{ color: 'var(--text-sub)' }}>
+                      {new Date(archive.created_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => setPreviewArchiveId(archive.id)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors" title="Visualizza">
-                          <Eye size={15} />
-                        </button>
+                          className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}
+                          onMouseEnter={e => { e.currentTarget.style.color = 'var(--brand)'; e.currentTarget.style.backgroundColor = 'var(--brand-50)' }}
+                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
+                          title="Visualizza"><Eye size={15} /></button>
                         <button onClick={() => handleDelete(archive)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Elimina">
-                          <Trash2 size={15} />
-                        </button>
+                          className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}
+                          onMouseEnter={e => { e.currentTarget.style.color = '#dc2626'; e.currentTarget.style.backgroundColor = '#fee2e2' }}
+                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
+                          title="Elimina"><Trash2 size={15} /></button>
                       </div>
                     </td>
                   </tr>
@@ -308,23 +262,16 @@ export default function ArchivePage() {
       </div>
 
       {archives.length > 0 && (
-        <p className="text-xs text-gray-400 mt-2 px-1">
+        <p className="text-xs mt-2 px-1" style={{ color: 'var(--text-muted)' }}>
           {archives.length} archiv{archives.length === 1 ? 'io' : 'i'}
         </p>
       )}
 
       {newModalOpen && (
-        <NewArchiveModal
-          onClose={() => setNewModalOpen(false)}
-          onSave={createArchive.mutateAsync}
-        />
+        <NewArchiveModal onClose={() => setNewModalOpen(false)} onSave={createArchive.mutateAsync} />
       )}
-
       {previewArchiveId && (
-        <ArchivePreviewModal
-          archiveId={previewArchiveId}
-          onClose={() => setPreviewArchiveId(null)}
-        />
+        <ArchivePreviewModal archiveId={previewArchiveId} onClose={() => setPreviewArchiveId(null)} />
       )}
     </div>
   )

@@ -37,9 +37,9 @@ function KpiCard({ icon: Icon, label, value, sub, color }) {
         <Icon size={18} className="text-white" />
       </div>
       <div>
-        <p className="text-sm text-gray-500">{label}</p>
-        <p className="text-xl font-semibold text-gray-900 mt-0.5">{value}</p>
-        {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+        <p className="text-sm" style={{ color: 'var(--text-sub)' }}>{label}</p>
+        <p className="text-xl font-semibold mt-0.5" style={{ color: 'var(--text-main)' }}>{value}</p>
+        {sub && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{sub}</p>}
       </div>
     </div>
   )
@@ -191,27 +191,27 @@ export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto">
       <div className="mb-4">
-        <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Riepilogo forecast</p>
+        <h1 className="text-xl font-semibold" style={{ color: 'var(--text-main)' }}>Dashboard</h1>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--text-sub)' }}>Riepilogo forecast</p>
       </div>
 
       {/* Filtro globale periodo */}
       <div className="card px-4 py-3 mb-6 flex items-center gap-3 flex-wrap">
-        <span className="text-sm font-medium text-gray-700">Periodo:</span>
-        <select className="input w-24 text-sm" value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
+        <span className="text-sm font-medium" style={{ color: 'var(--text-main)' }}>Periodo:</span>
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '80px' }} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
           {MONTHS_SHORT.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
         </select>
-        <select className="input w-20 text-sm" value={startYear} onChange={e => setStartYear(Number(e.target.value))}>
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '70px' }} value={startYear} onChange={e => setStartYear(Number(e.target.value))}>
           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <span className="text-gray-400">→</span>
-        <select className="input w-24 text-sm" value={endMonth} onChange={e => setEndMonth(Number(e.target.value))}>
+        <span style={{ color: 'var(--text-muted)' }}>→</span>
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '80px' }} value={endMonth} onChange={e => setEndMonth(Number(e.target.value))}>
           {MONTHS_SHORT.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
         </select>
-        <select className="input w-20 text-sm" value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '70px' }} value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <span className="text-xs text-gray-400 ml-2">{numMonths} mes{numMonths === 1 ? 'e' : 'i'}</span>
+        <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>{numMonths} mes{numMonths === 1 ? 'e' : 'i'}</span>
       </div>
 
       {/* KPI */}
@@ -224,7 +224,7 @@ export default function DashboardPage() {
 
       {/* Grafico mensile */}
       <div className="card p-5 mb-6">
-        <h2 className="text-sm font-medium text-gray-700 mb-4">Andamento mensile — fatturato</h2>
+        <h2 className="text-sm font-medium mb-4" style={{ color: 'var(--text-main)' }}>Andamento mensile — fatturato</h2>
         {isLoading ? (
           <div className="h-48 flex items-center justify-center text-gray-400 text-sm">Caricamento…</div>
         ) : (
@@ -238,7 +238,7 @@ export default function DashboardPage() {
                       {fmtEur(m.rev)}
                     </span>
                   )}
-                  <div style={{ height: `${barH}px`, backgroundColor: '#6366f1', borderRadius: '4px 4px 0 0', width: '100%' }} title={fmtEur(m.rev)} />
+                  <div style={{ height: `${barH}px`, backgroundColor: 'var(--brand)', borderRadius: '4px 4px 0 0', width: '100%' }} title={fmtEur(m.rev)} />
                   <span className="text-xs text-gray-400">{m.label}</span>
                 </div>
               )
@@ -252,24 +252,24 @@ export default function DashboardPage() {
 
         {/* Clienti per fatturato */}
         <div className="card p-5">
-          <h2 className="text-sm font-medium text-gray-700 mb-3">
+          <h2 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>
             Clienti per fatturato
-            <span className="ml-2 text-xs text-gray-400 font-normal">({byCustomer.length} totali)</span>
+            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>({byCustomer.length} totali)</span>
           </h2>
           {byCustomer.length === 0 ? (
-            <p className="text-sm text-gray-400">Nessun dato nel periodo selezionato.</p>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessun dato nel periodo selezionato.</p>
           ) : (
             <div style={{ height: '320px', overflowY: 'scroll' }}>
               <div className="space-y-2 pr-1">
                 {byCustomer.map((c, i) => (
                   <div key={c.name} className="flex items-center gap-3">
-                    <span className="text-xs font-medium text-gray-400 w-5 shrink-0">{i + 1}</span>
+                    <span className="text-xs font-medium w-5 shrink-0" style={{ color: 'var(--text-muted)' }}>{i + 1}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-900 truncate">{c.name}</span>
-                        <span className="text-xs font-medium text-gray-900 ml-2 shrink-0">{fmtEur(c.revenue)}</span>
+                        <span className="text-xs truncate" style={{ color: 'var(--text-main)' }}>{c.name}</span>
+                        <span className="text-xs font-medium ml-2 shrink-0" style={{ color: 'var(--text-main)' }}>{fmtEur(c.revenue)}</span>
                       </div>
-                      <div className="h-1 bg-gray-100 rounded mt-1">
+                      <div className="h-1 rounded mt-1" style={{ backgroundColor: 'var(--border)' }}>
                         <div className="h-1 bg-brand-400 rounded" style={{ width: `${(c.revenue / (byCustomer[0]?.revenue || 1)) * 100}%` }} />
                       </div>
                     </div>
@@ -282,31 +282,31 @@ export default function DashboardPage() {
 
         {/* Prodotti per pezzi con rotazione media */}
         <div className="card p-5">
-          <h2 className="text-sm font-medium text-gray-700 mb-3">
+          <h2 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>
             Prodotti per pezzi
-            <span className="ml-2 text-xs text-gray-400 font-normal">({byProduct.length} totali)</span>
+            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>({byProduct.length} totali)</span>
           </h2>
           {byProduct.length === 0 ? (
-            <p className="text-sm text-gray-400">Nessun dato nel periodo selezionato.</p>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessun dato nel periodo selezionato.</p>
           ) : (
             <div style={{ height: '320px', overflowY: 'scroll' }}>
               <div className="space-y-2 pr-1">
                 {byProduct.map((p, i) => (
                   <div key={p.name} className="flex items-center gap-3">
-                    <span className="text-xs font-medium text-gray-400 w-5 shrink-0">{i + 1}</span>
+                    <span className="text-xs font-medium w-5 shrink-0" style={{ color: 'var(--text-muted)' }}>{i + 1}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-900 truncate">{p.name}</span>
+                        <span className="text-xs truncate" style={{ color: 'var(--text-main)' }}>{p.name}</span>
                         <div className="flex items-center gap-2 ml-2 shrink-0">
                           {p.rotMedia > 0 && (
-                            <span className="text-xs text-amber-600 font-medium" title="Rotazione media mensile/pdv">
+                            <span className="text-xs text-amber-500 font-medium" title="Rotazione media mensile/pdv">
                               {fmtDec(p.rotMedia)} rot/mese
                             </span>
                           )}
-                          <span className="text-xs font-medium text-gray-900">{fmt(p.qty)} pz</span>
+                          <span className="text-xs font-medium" style={{ color: 'var(--text-main)' }}>{fmt(p.qty)} pz</span>
                         </div>
                       </div>
-                      <div className="h-1 bg-gray-100 rounded mt-1">
+                      <div className="h-1 rounded mt-1" style={{ backgroundColor: 'var(--border)' }}>
                         <div className="h-1 bg-teal-400 rounded" style={{ width: `${(p.qty / (byProduct[0]?.qty || 1)) * 100}%` }} />
                       </div>
                     </div>
@@ -320,7 +320,7 @@ export default function DashboardPage() {
 
       {/* Rotazioni in scadenza — fisso, non filtrato per periodo */}
       <div className="card p-5">
-        <h2 className="text-sm font-medium text-gray-700 mb-3">
+        <h2 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>
           Rotazioni in scadenza nei prossimi 60 giorni
           {expiringRotations.length > 0 && (
             <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
@@ -329,28 +329,28 @@ export default function DashboardPage() {
           )}
         </h2>
         {expiringRotations.length === 0 ? (
-          <p className="text-sm text-gray-400">Nessuna rotazione in scadenza nei prossimi 60 giorni.</p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessuna rotazione in scadenza nei prossimi 60 giorni.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left py-2 font-medium text-gray-500">Cliente</th>
-                <th className="text-left py-2 font-medium text-gray-500">Prodotti</th>
-                <th className="text-left py-2 font-medium text-gray-500">Frequenza</th>
-                <th className="text-right py-2 font-medium text-gray-500">Scadenza</th>
-                <th className="text-right py-2 font-medium text-gray-500">Giorni rimanenti</th>
+              <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Cliente</th>
+                <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Prodotti</th>
+                <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Frequenza</th>
+                <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Scadenza</th>
+                <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Giorni rimanenti</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
               {expiringRotations.map(r => {
                 const end      = new Date(r.period_end)
                 const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24))
                 return (
-                  <tr key={r.id} className="hover:bg-gray-50">
-                    <td className="py-2 font-medium text-gray-900">{r.company_name}</td>
-                    <td className="py-2 text-gray-600">{r.product_count} prodotti</td>
-                    <td className="py-2 text-gray-600">{FREQ[r.frequency]}</td>
-                    <td className="py-2 text-right text-gray-600">
+                  <tr key={r.id}>
+                    <td className="py-2 font-medium" style={{ color: 'var(--text-main)' }}>{r.company_name}</td>
+                    <td className="py-2" style={{ color: 'var(--text-sub)' }}>{r.product_count} prodotti</td>
+                    <td className="py-2" style={{ color: 'var(--text-sub)' }}>{FREQ[r.frequency]}</td>
+                    <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>
                       {end.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}
                     </td>
                     <td className="py-2 text-right">
