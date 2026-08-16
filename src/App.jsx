@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './lib/auth'
+import { useAuth, useClearCacheOnAuthChange } from './lib/auth'
 import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
@@ -9,20 +9,23 @@ import PriceListsPage from './pages/PriceListsPage'
 import ForecastPage from './pages/ForecastPage'
 import ReportPage from './pages/ReportPage'
 import RotationsPage from './pages/RotationsPage'
-import SettingsPage from './pages/SettingsPage'
+import AuditLogPage from './pages/AuditLogPage'
 import ArchivePage from './pages/ArchivePage'
+import SettingsPage from './pages/SettingsPage'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+      <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--brand)', borderTopColor: 'transparent' }} />
     </div>
   )
   return user ? children : <Navigate to="/login" replace />
 }
 
 export default function App() {
+  useClearCacheOnAuthChange()
+
   return (
     <BrowserRouter>
       <Routes>
@@ -42,6 +45,7 @@ export default function App() {
           <Route path="report"     element={<ReportPage />} />
           <Route path="archive"    element={<ArchivePage />} />
           <Route path="settings"   element={<SettingsPage />} />
+          <Route path="auditlog"   element={<AuditLogPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

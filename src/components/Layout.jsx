@@ -1,28 +1,31 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useTheme } from '../hooks/useTheme'
+import { useIsAdmin } from '../hooks/useUserRole'
 import {
   LayoutDashboard, Package, Users, Tag,
   BarChart2, FileText, LogOut, Zap,
-  RefreshCw, Archive, Settings, Sun, Moon
+  RefreshCw, Archive, Settings, Sun, Moon, ClipboardList
 } from 'lucide-react'
 
-const NAV = [
-  { to: '/dashboard',  label: 'Dashboard',    icon: LayoutDashboard },
-  { to: '/products',   label: 'Prodotti',      icon: Package },
-  { to: '/customers',  label: 'Clienti',       icon: Users },
-  { to: '/pricelists', label: 'Listini medi',  icon: Tag },
-  { to: '/rotations',  label: 'Rotazioni',     icon: RefreshCw },
-  { to: '/forecast',   label: 'Forecast',      icon: BarChart2 },
-  { to: '/report',     label: 'Report',        icon: FileText },
-  { to: '/archive',    label: 'Archivio',      icon: Archive },
-  { to: '/settings',   label: 'Impostazioni',  icon: Settings },
-]
-
 export default function Layout() {
-  const { user, logout }    = useAuth()
+  const { user, logout }       = useAuth()
   const { theme, toggleTheme } = useTheme()
-  const navigate            = useNavigate()
+  const isAdmin                = useIsAdmin()
+  const navigate               = useNavigate()
+
+  const NAV = [
+    { to: '/dashboard',  label: 'Dashboard',    icon: LayoutDashboard },
+    { to: '/products',   label: 'Prodotti',      icon: Package },
+    { to: '/customers',  label: 'Clienti',       icon: Users },
+    { to: '/pricelists', label: 'Listini medi',  icon: Tag },
+    { to: '/rotations',  label: 'Rotazioni',     icon: RefreshCw },
+    { to: '/forecast',   label: 'Forecast',      icon: BarChart2 },
+    { to: '/report',     label: 'Report',        icon: FileText },
+    { to: '/archive',    label: 'Archivio',      icon: Archive },
+    { to: '/settings',   label: 'Impostazioni',  icon: Settings },
+    ...(isAdmin ? [{ to: '/auditlog', label: 'Log operazioni', icon: ClipboardList }] : []),
+  ]
 
   async function handleLogout() {
     await logout()
