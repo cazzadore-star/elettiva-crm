@@ -24,7 +24,9 @@ export function usePopulateReportFromForecast() {
       const { error } = await supabase.rpc('populate_report_from_forecast', { p_year: year })
       if (error) throw error
     },
-    onSuccess: (_, year) => qc.invalidateQueries({ queryKey: [KEY, 'pivot', year] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [KEY] })
+    },
   })
 }
 
