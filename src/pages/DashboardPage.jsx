@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react'
-import { TrendingUp, Users, Package, RefreshCw, X } from 'lucide-react'
+import { TrendingUp, Users, Package, RefreshCw, X, Search } from 'lucide-react'
 import { useForecastPivotAll } from '../hooks/useForecast'
 import { useCustomers } from '../hooks/useCustomers'
 import { useRotations } from '../hooks/useRotations'
+import { useCategories } from '../hooks/useCategories'
 
 const CURRENT_YEAR  = new Date().getFullYear()
 const YEARS         = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 1 + i)
@@ -20,28 +21,16 @@ function buildMonthRange(startYear, startMonth, endYear, endMonth) {
   return cols
 }
 
-function fmtEur(n) {
-  return '€ ' + Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-function fmt(n) {
-  return Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-}
-function fmtDec(n) {
-  return Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-function delta(curr, prev) {
-  if (!prev || prev === 0) return null
-  return ((curr - prev) / prev) * 100
-}
+function fmtEur(n) { return '€ ' + Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+function fmt(n)    { return Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }
+function fmtDec(n) { return Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
 
 function DeltaBadge({ curr, prev }) {
-  const d = delta(curr, prev)
-  if (d === null) return <span style={{ color: 'var(--text-muted)' }} className="text-xs">—</span>
-  const positive = d >= 0
+  if (!prev || prev === 0) return <span style={{ color: 'var(--text-muted)' }} className="text-xs">—</span>
+  const d = ((curr - prev) / prev) * 100
   return (
-    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${positive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-      {positive ? '+' : ''}{d.toFixed(1)}%
+    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${d >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+      {d >= 0 ? '+' : ''}{d.toFixed(1)}%
     </span>
   )
 }
@@ -63,19 +52,13 @@ function KpiCard({ icon: Icon, label, value, sub, color }) {
 
 function CustomerModal({ customerName, rows, cols, onClose }) {
   const customerRows = rows.filter(r => r.company_name === customerName)
-  const totalRevenue = customerRows.reduce((s, r) =>
-    s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0), 0)
-  const totalQty = customerRows.reduce((s, r) =>
-    s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0), 0)
-  const monthlyData = cols.map(c => {
-    const rev = customerRows.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0)
-    return { ...c, rev }
-  })
-  const maxRev = Math.max(...monthlyData.map(m => m.rev), 1)
-  const byProduct = customerRows.map(r => {
+  const totalRevenue = customerRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0), 0)
+  const totalQty     = customerRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0), 0)
+  const monthlyData  = cols.map(c => ({ ...c, rev: customerRows.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0) }))
+  const maxRev       = Math.max(...monthlyData.map(m => m.rev), 1)
+  const byProduct    = customerRows.map(r => {
     const qty = cols.filter(c => c.year === r.year).reduce((s, c) => s + Number(r[c.key] || 0), 0)
-    const rev = qty * Number(r.avg_price_snapshot || 0)
-    return { name: r.product_description, qty, rev }
+    return { name: r.product_description, qty, rev: qty * Number(r.avg_price_snapshot || 0) }
   }).sort((a, b) => b.rev - a.rev)
 
   return (
@@ -152,43 +135,36 @@ export default function DashboardPage() {
   const [startYear,  setStartYear]              = useState(CURRENT_YEAR)
   const [endMonth,   setEndMonth]               = useState(12)
   const [endYear,    setEndYear]                = useState(CURRENT_YEAR)
+  const [filterCustomer,  setFilterCustomer]    = useState('')
+  const [filterCategory,  setFilterCategory]    = useState('')
+  const [filterProduct,   setFilterProduct]     = useState('')
   const [selectedCustomer, setSelectedCustomer] = useState(null)
   const [confrontoTab, setConfrontoTab]         = useState('clienti')
 
   const { data: rows = [], isLoading } = useForecastPivotAll()
   const { data: customers = [] }       = useCustomers()
   const { data: rotations = [] }       = useRotations()
+  const { data: categories = [] }      = useCategories()
 
-  const cols = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
-  // Stesso periodo ma anno precedente
+  const cols     = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
   const colsPrev = useMemo(() => buildMonthRange(startYear - 1, startMonth, endYear - 1, endMonth), [startYear, startMonth, endYear, endMonth])
 
   const yearsInRange     = useMemo(() => [...new Set(cols.map(c => c.year))], [cols])
   const yearsInRangePrev = useMemo(() => [...new Set(colsPrev.map(c => c.year))], [colsPrev])
-  const rangeRows        = useMemo(() => rows.filter(r => yearsInRange.includes(r.year)), [rows, yearsInRange])
-  const rangeRowsPrev    = useMemo(() => rows.filter(r => yearsInRangePrev.includes(r.year)), [rows, yearsInRangePrev])
 
-  function calcRevForRows(rowSet, colSet) {
-    let rev = 0
-    for (const r of rowSet) {
-      for (const c of colSet) {
-        if (c.year === r.year) rev += Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0)
-      }
-    }
-    return rev
-  }
-  function calcQtyForRows(rowSet, colSet) {
-    let qty = 0
-    for (const r of rowSet) {
-      for (const c of colSet) {
-        if (c.year === r.year) qty += Number(r[c.key] || 0)
-      }
-    }
-    return qty
-  }
+  // Applica filtri alle righe
+  const filteredRows = useMemo(() => rows.filter(r => {
+    if (filterCustomer && r.company_name        !== filterCustomer) return false
+    if (filterProduct  && r.product_description !== filterProduct)  return false
+    if (filterCategory && String(r.category_id) !== filterCategory) return false
+    return true
+  }), [rows, filterCustomer, filterProduct, filterCategory])
 
-  const totalRevenue = useMemo(() => calcRevForRows(rangeRows, cols), [rangeRows, cols])
-  const totalQty     = useMemo(() => calcRevForRows(rangeRows, cols) && calcQtyForRows(rangeRows, cols), [rangeRows, cols])
+  const rangeRows     = useMemo(() => filteredRows.filter(r => yearsInRange.includes(r.year)),     [filteredRows, yearsInRange])
+  const rangeRowsPrev = useMemo(() => filteredRows.filter(r => yearsInRangePrev.includes(r.year)), [filteredRows, yearsInRangePrev])
+
+  const totalRev  = useMemo(() => rangeRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0), 0), [rangeRows, cols])
+  const totalQty2 = useMemo(() => rangeRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0), 0), [rangeRows, cols])
 
   const today    = new Date()
   const in60days = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000)
@@ -196,38 +172,23 @@ export default function DashboardPage() {
     .filter(r => { const end = new Date(r.period_end); return end >= today && end <= in60days })
     .sort((a, b) => new Date(a.period_end) - new Date(b.period_end))
 
-  const monthlyData = cols.map(c => {
-    const rev = rows.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0)
-    return { ...c, rev }
-  })
+  const monthlyData = cols.map(c => ({
+    ...c,
+    rev: rangeRows.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0)
+  }))
   const maxRev = Math.max(...monthlyData.map(m => m.rev), 1)
 
   const byCustomer = useMemo(() => {
     const curr = {}, prev = {}
-    for (const r of rangeRows) {
-      if (!curr[r.company_name]) curr[r.company_name] = 0
-      for (const c of cols) if (c.year === r.year) curr[r.company_name] += Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0)
-    }
-    for (const r of rangeRowsPrev) {
-      if (!prev[r.company_name]) prev[r.company_name] = 0
-      for (const c of colsPrev) if (c.year === r.year) prev[r.company_name] += Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0)
-    }
+    for (const r of rangeRows)     { if (!curr[r.company_name]) curr[r.company_name] = 0; for (const c of cols)     if (c.year === r.year) curr[r.company_name] += Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0) }
+    for (const r of rangeRowsPrev) { if (!prev[r.company_name]) prev[r.company_name] = 0; for (const c of colsPrev) if (c.year === r.year) prev[r.company_name] += Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0) }
     return Object.keys(curr).map(name => ({ name, curr: curr[name], prev: prev[name] || 0 })).sort((a, b) => b.curr - a.curr)
   }, [rangeRows, rangeRowsPrev, cols, colsPrev])
 
-  const byCustomerForList = useMemo(() => byCustomer.map(c => ({ name: c.name, revenue: c.curr, qty: 0 })), [byCustomer])
-
   const byProduct = useMemo(() => {
     const curr = {}, prev = {}
-    for (const r of rangeRows) {
-      if (!curr[r.product_description]) curr[r.product_description] = 0
-      for (const c of cols) if (c.year === r.year) curr[r.product_description] += Number(r[c.key] || 0)
-    }
-    for (const r of rangeRowsPrev) {
-      if (!prev[r.product_description]) prev[r.product_description] = 0
-      for (const c of colsPrev) if (c.year === r.year) prev[r.product_description] += Number(r[c.key] || 0)
-    }
-    // Rotazione media
+    for (const r of rangeRows)     { if (!curr[r.product_description]) curr[r.product_description] = 0; for (const c of cols)     if (c.year === r.year) curr[r.product_description] += Number(r[c.key] || 0) }
+    for (const r of rangeRowsPrev) { if (!prev[r.product_description]) prev[r.product_description] = 0; for (const c of colsPrev) if (c.year === r.year) prev[r.product_description] += Number(r[c.key] || 0) }
     const rotProdMap = {}
     for (const rot of rotations) {
       const rotStart = new Date(rot.period_start), rotEnd = new Date(rot.period_end)
@@ -260,13 +221,16 @@ export default function DashboardPage() {
     return count > 0 ? total / count : 0
   }, [rotations, startYear, startMonth, endYear, endMonth])
 
-  const totalRev  = useMemo(() => calcRevForRows(rangeRows, cols), [rangeRows, cols])
-  const totalQty2 = useMemo(() => calcQtyForRows(rangeRows, cols), [rangeRows, cols])
-
   const FREQ = { monthly: 'Mensile', bimonthly: 'Bimestrale', quarterly: 'Trimestrale', quadrimestral: 'Quadrimestrale' }
   const numMonths = cols.length
-  const prevLabel = `${MONTHS_SHORT[startMonth-1]} ${startYear-1} → ${MONTHS_SHORT[endMonth-1]} ${endYear-1}`
   const currLabel = `${MONTHS_SHORT[startMonth-1]} ${startYear} → ${MONTHS_SHORT[endMonth-1]} ${endYear}`
+  const prevLabel = `${MONTHS_SHORT[startMonth-1]} ${startYear-1} → ${MONTHS_SHORT[endMonth-1]} ${endYear-1}`
+  const hasFilters = filterCustomer || filterCategory || filterProduct
+  const SEL = { width: 'auto' }
+
+  // Lista prodotti unici per il filtro
+  const uniqueProducts  = useMemo(() => [...new Set(rows.map(r => r.product_description))].sort(), [rows])
+  const uniqueCustomers = useMemo(() => [...new Set(rows.map(r => r.company_name))].sort(), [rows])
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -275,7 +239,7 @@ export default function DashboardPage() {
         <p className="text-sm mt-0.5" style={{ color: 'var(--text-sub)' }}>Riepilogo forecast</p>
       </div>
 
-      {/* Filtro globale — selettori a larghezza automatica SEMPRE */}
+      {/* Filtro globale */}
       <div className="card px-4 py-3 mb-6 flex items-center gap-3 flex-wrap">
         <span className="text-sm font-medium" style={{ color: 'var(--text-main)' }}>Periodo:</span>
         <select className="input text-sm" style={{ width: 'auto', minWidth: '80px' }} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
@@ -291,7 +255,29 @@ export default function DashboardPage() {
         <select className="input text-sm" style={{ width: 'auto', minWidth: '70px' }} value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>{numMonths} mes{numMonths === 1 ? 'e' : 'i'}</span>
+
+        <div className="w-px h-5 mx-1" style={{ backgroundColor: 'var(--border)' }} />
+
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '130px' }} value={filterCustomer} onChange={e => setFilterCustomer(e.target.value)}>
+          <option value="">Tutti i clienti</option>
+          {uniqueCustomers.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '130px' }} value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+          <option value="">Tutte le categorie</option>
+          {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+        </select>
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '130px' }} value={filterProduct} onChange={e => setFilterProduct(e.target.value)}>
+          <option value="">Tutti i prodotti</option>
+          {uniqueProducts.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+
+        {hasFilters && (
+          <button className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}
+            onClick={() => { setFilterCustomer(''); setFilterCategory(''); setFilterProduct('') }}>
+            Pulisci filtri
+          </button>
+        )}
+        <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)' }}>{numMonths} mes{numMonths === 1 ? 'e' : 'i'}</span>
       </div>
 
       {/* KPI */}
@@ -328,7 +314,7 @@ export default function DashboardPage() {
         <div className="card p-5">
           <h2 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>
             Clienti per fatturato
-            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>({byCustomer.length} totali · clicca per dettaglio)</span>
+            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>({byCustomer.length} · clicca per dettaglio)</span>
           </h2>
           {byCustomer.length === 0 ? (
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessun dato nel periodo selezionato.</p>
@@ -399,10 +385,7 @@ export default function DashboardPage() {
             {['clienti', 'prodotti'].map(tab => (
               <button key={tab} onClick={() => setConfrontoTab(tab)}
                 className="px-3 py-1 rounded text-xs font-medium transition-colors capitalize"
-                style={{
-                  backgroundColor: confrontoTab === tab ? 'var(--brand)' : 'var(--alt-row)',
-                  color: confrontoTab === tab ? 'white' : 'var(--text-sub)',
-                }}>
+                style={{ backgroundColor: confrontoTab === tab ? 'var(--brand)' : 'var(--alt-row)', color: confrontoTab === tab ? 'white' : 'var(--text-sub)' }}>
                 {tab}
               </button>
             ))}
@@ -423,8 +406,7 @@ export default function DashboardPage() {
               <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
                 {byCustomer.map(c => (
                   <tr key={c.name}>
-                    <td className="py-2 cursor-pointer hover:underline" style={{ color: 'var(--brand)' }}
-                      onClick={() => setSelectedCustomer(c.name)}>{c.name}</td>
+                    <td className="py-2 cursor-pointer hover:underline" style={{ color: 'var(--brand)' }} onClick={() => setSelectedCustomer(c.name)}>{c.name}</td>
                     <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{fmtEur(c.prev)}</td>
                     <td className="py-2 text-right font-medium" style={{ color: 'var(--text-main)' }}>{fmtEur(c.curr)}</td>
                     <td className="py-2 text-right"><DeltaBadge curr={c.curr} prev={c.prev} /></td>
@@ -459,14 +441,12 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Rotazioni in scadenza */}
+      {/* Rotazioni in scadenza — non filtrate */}
       <div className="card p-5">
         <h2 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>
           Rotazioni in scadenza nei prossimi 60 giorni
           {expiringRotations.length > 0 && (
-            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
-              {expiringRotations.length}
-            </span>
+            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">{expiringRotations.length}</span>
           )}
         </h2>
         {expiringRotations.length === 0 ? (
@@ -484,16 +464,14 @@ export default function DashboardPage() {
             </thead>
             <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
               {expiringRotations.map(r => {
-                const end      = new Date(r.period_end)
+                const end = new Date(r.period_end)
                 const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24))
                 return (
                   <tr key={r.id}>
                     <td className="py-2 font-medium" style={{ color: 'var(--text-main)' }}>{r.company_name}</td>
                     <td className="py-2" style={{ color: 'var(--text-sub)' }}>{r.product_count} prodotti</td>
                     <td className="py-2" style={{ color: 'var(--text-sub)' }}>{FREQ[r.frequency]}</td>
-                    <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>
-                      {end.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}
-                    </td>
+                    <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{end.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}</td>
                     <td className="py-2 text-right">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${daysLeft <= 14 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                         {daysLeft} giorni
