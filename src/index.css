@@ -117,3 +117,10 @@ body {
 }
 .btn-secondary:hover { background-color: var(--alt-row); }
 .btn-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+
+/* Badge stato */
+.dark .bg-green-100 { background-color: #166534; }
+.dark .text-green-700 { color: #bbf7d0; }
+.dark .bg-red-100 { background-color: #7f1d1d; }
+.dark .text-red-700 { color: #fecaca; }
