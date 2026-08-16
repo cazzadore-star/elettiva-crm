@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { TrendingUp, Users, Package, RefreshCw, X, Search } from 'lucide-react'
+import { TrendingUp, Users, Package, RefreshCw, X } from 'lucide-react'
 import { useForecastPivotAll } from '../hooks/useForecast'
 import { useCustomers } from '../hooks/useCustomers'
 import { useRotations } from '../hooks/useRotations'
@@ -146,13 +146,17 @@ export default function DashboardPage() {
   const { data: rotations = [] }       = useRotations()
   const { data: categories = [] }      = useCategories()
 
-  const cols     = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
+  // Colonne range corrente e precedente
+  const cols     = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth),         [startYear, startMonth, endYear, endMonth])
   const colsPrev = useMemo(() => buildMonthRange(startYear - 1, startMonth, endYear - 1, endMonth), [startYear, startMonth, endYear, endMonth])
 
-  const yearsInRange     = useMemo(() => [...new Set(cols.map(c => c.year))], [cols])
+  // numMonths definito subito dopo cols
+  const numMonths = cols.length
+
+  const yearsInRange     = useMemo(() => [...new Set(cols.map(c => c.year))],     [cols])
   const yearsInRangePrev = useMemo(() => [...new Set(colsPrev.map(c => c.year))], [colsPrev])
 
-  // Applica filtri alle righe
+  // Righe filtrate
   const filteredRows = useMemo(() => rows.filter(r => {
     if (filterCustomer && r.company_name        !== filterCustomer) return false
     if (filterProduct  && r.product_description !== filterProduct)  return false
@@ -163,8 +167,25 @@ export default function DashboardPage() {
   const rangeRows     = useMemo(() => filteredRows.filter(r => yearsInRange.includes(r.year)),     [filteredRows, yearsInRange])
   const rangeRowsPrev = useMemo(() => filteredRows.filter(r => yearsInRangePrev.includes(r.year)), [filteredRows, yearsInRangePrev])
 
+  // KPI
   const totalRev  = useMemo(() => rangeRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0), 0), [rangeRows, cols])
   const totalQty2 = useMemo(() => rangeRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0), 0), [rangeRows, cols])
+
+  // Rotazione media: pezzi filtrati / mesi / PDV rotazioni nel periodo (filtrate per cliente se attivo)
+const rotazioneMediaGlobale = useMemo(() => {
+  const rotsInRange = rotations.filter(rot => {
+    const rotStart   = new Date(rot.period_start)
+    const rotEnd     = new Date(rot.period_end)
+    const rangeStart = new Date(startYear, startMonth - 1, 1)
+    const rangeEnd   = new Date(endYear, endMonth - 1, 31)
+    if (rotEnd < rangeStart || rotStart > rangeEnd) return false
+    if (filterCustomer && rot.company_name !== filterCustomer) return false
+    return true
+  })
+  if (rotsInRange.length === 0) return 0
+  const avg = rotsInRange.reduce((s, r) => s + Number(r.rotation_value || 0), 0) / rotsInRange.length
+  return avg
+}, [rotations, startYear, startMonth, endYear, endMonth, filterCustomer])
 
   const today    = new Date()
   const in60days = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000)
@@ -207,28 +228,11 @@ export default function DashboardPage() {
     return Object.keys(curr).map(name => ({ name, curr: curr[name], prev: prev[name] || 0, rotMedia: rotProdMap[name] || 0 })).sort((a, b) => b.curr - a.curr)
   }, [rangeRows, rangeRowsPrev, cols, colsPrev, rotations, rows, startYear, startMonth, endYear, endMonth])
 
-  const rotazioneMediaGlobale = useMemo(() => {
-    let total = 0, count = 0
-    for (const rot of rotations) {
-      const rotStart = new Date(rot.period_start), rotEnd = new Date(rot.period_end)
-      const rangeStart = new Date(startYear, startMonth - 1, 1), rangeEnd = new Date(endYear, endMonth - 1, 31)
-      if (rotEnd < rangeStart || rotStart > rangeEnd) continue
-      const step = { monthly: 1, bimonthly: 2, quarterly: 3, quadrimestral: 4 }[rot.frequency] || 1
-      const dur = (rotEnd.getFullYear() - rotStart.getFullYear()) * 12 + (rotEnd.getMonth() - rotStart.getMonth()) + 1
-      total += (rot.num_points * rot.rotation_value * Math.ceil(dur / step)) / Math.max(dur, 1)
-      count++
-    }
-    return count > 0 ? total / count : 0
-  }, [rotations, startYear, startMonth, endYear, endMonth])
-
   const FREQ = { monthly: 'Mensile', bimonthly: 'Bimestrale', quarterly: 'Trimestrale', quadrimestral: 'Quadrimestrale' }
-  const numMonths = cols.length
-  const currLabel = `${MONTHS_SHORT[startMonth-1]} ${startYear} → ${MONTHS_SHORT[endMonth-1]} ${endYear}`
-  const prevLabel = `${MONTHS_SHORT[startMonth-1]} ${startYear-1} → ${MONTHS_SHORT[endMonth-1]} ${endYear-1}`
+  const currLabel  = `${MONTHS_SHORT[startMonth-1]} ${startYear} → ${MONTHS_SHORT[endMonth-1]} ${endYear}`
+  const prevLabel  = `${MONTHS_SHORT[startMonth-1]} ${startYear-1} → ${MONTHS_SHORT[endMonth-1]} ${endYear-1}`
   const hasFilters = filterCustomer || filterCategory || filterProduct
-  const SEL = { width: 'auto' }
 
-  // Lista prodotti unici per il filtro
   const uniqueProducts  = useMemo(() => [...new Set(rows.map(r => r.product_description))].sort(), [rows])
   const uniqueCustomers = useMemo(() => [...new Set(rows.map(r => r.company_name))].sort(), [rows])
 
@@ -239,7 +243,7 @@ export default function DashboardPage() {
         <p className="text-sm mt-0.5" style={{ color: 'var(--text-sub)' }}>Riepilogo forecast</p>
       </div>
 
-      {/* Filtro globale */}
+      {/* Filtro globale — selettori a larghezza automatica SEMPRE */}
       <div className="card px-4 py-3 mb-6 flex items-center gap-3 flex-wrap">
         <span className="text-sm font-medium" style={{ color: 'var(--text-main)' }}>Periodo:</span>
         <select className="input text-sm" style={{ width: 'auto', minWidth: '80px' }} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
@@ -255,9 +259,7 @@ export default function DashboardPage() {
         <select className="input text-sm" style={{ width: 'auto', minWidth: '70px' }} value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-
         <div className="w-px h-5 mx-1" style={{ backgroundColor: 'var(--border)' }} />
-
         <select className="input text-sm" style={{ width: 'auto', minWidth: '130px' }} value={filterCustomer} onChange={e => setFilterCustomer(e.target.value)}>
           <option value="">Tutti i clienti</option>
           {uniqueCustomers.map(n => <option key={n} value={n}>{n}</option>)}
@@ -270,7 +272,6 @@ export default function DashboardPage() {
           <option value="">Tutti i prodotti</option>
           {uniqueProducts.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
-
         {hasFilters && (
           <button className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}
             onClick={() => { setFilterCustomer(''); setFilterCategory(''); setFilterProduct('') }}>
@@ -391,7 +392,6 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
-
         {confrontoTab === 'clienti' ? (
           <div style={{ maxHeight: '320px', overflowY: 'scroll' }}>
             <table className="w-full text-xs">
