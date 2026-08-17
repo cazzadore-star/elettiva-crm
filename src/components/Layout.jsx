@@ -74,7 +74,8 @@ export default function Layout() {
             {theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
           </button>
 
-          <p className="text-xs truncate px-1" style={{ color: 'var(--text-muted)' }}>{user?.email}</p>
+         <p className="text-xs truncate px-1" style={{ color: 'var(--text-muted)' }}>{user?.email}</p>
+         <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>v1.4.2</p>
 
           <button
             onClick={handleLogout}
