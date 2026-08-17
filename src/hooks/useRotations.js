@@ -88,10 +88,11 @@ export function useCreateRotation() {
 
       return rot
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [KEY] })
-      qc.invalidateQueries({ queryKey: ['forecast'] })
-    },
+   onSuccess: () => {
+  qc.invalidateQueries({ queryKey: [KEY] })
+  qc.invalidateQueries({ queryKey: ['products_rotation_info'] })
+  qc.invalidateQueries({ queryKey: ['forecast'] })
+},
   })
 }
 
@@ -132,9 +133,10 @@ export function useUpdateRotation() {
         .rpc('apply_rotation_to_forecast', { p_rotation_id: id })
       if (applyError) throw applyError
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [KEY] })
-      qc.invalidateQueries({ queryKey: ['forecast'] })
-    },
+   onSuccess: () => {
+  qc.invalidateQueries({ queryKey: [KEY] })
+  qc.invalidateQueries({ queryKey: ['products_rotation_info'] })
+  qc.invalidateQueries({ queryKey: ['forecast'] })
+},
   })
 }

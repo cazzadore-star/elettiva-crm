@@ -1,8 +1,7 @@
 import { useEffect } from 'react'
 import { X } from 'lucide-react'
 
-export default function Modal({ title, onClose, children }) {
-  // Chiudi con ESC
+export default function Modal({ title, onClose, children, wide }) {
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handler)
@@ -11,25 +10,24 @@ export default function Modal({ title, onClose, children }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Overlay */}
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div
-        className="absolute inset-0 bg-black/40"
-        onClick={onClose}
-      />
-      {/* Panel */}
-      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900">{title}</h2>
+        className={`relative rounded-xl shadow-xl w-full ${wide ? 'max-w-3xl' : 'max-w-md'}`}
+        style={{ backgroundColor: 'var(--bg-card)' }}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <h2 className="font-semibold" style={{ color: 'var(--text-main)' }}>{title}</h2>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="p-1 rounded-lg transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-main)'; e.currentTarget.style.backgroundColor = 'var(--alt-row)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
           >
             <X size={18} />
           </button>
         </div>
-        <div className="px-5 py-4">
-          {children}
-        </div>
+        <div className="px-5 py-4">{children}</div>
       </div>
     </div>
   )
