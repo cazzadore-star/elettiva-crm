@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Plus, Trash2, AlertTriangle, ChevronUp, ChevronsUpDown, ChevronDown, Search, RefreshCw } from 'lucide-react'
 import { useCustomers } from '../hooks/useCustomers'
 import { useProducts } from '../hooks/useProducts'
@@ -55,6 +55,10 @@ function SortableTh({ col, label, sortCol, sortDir, onSort, className }) {
 function EditableCell({ value, onSave }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal]         = useState(value ?? 0)
+
+  useEffect(() => {
+    if (!editing) setVal(value ?? 0)
+  }, [value, editing])
 
   if (editing) {
     return (
