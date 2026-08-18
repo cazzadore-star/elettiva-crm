@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Plus, Trash2, AlertTriangle, ChevronUp, ChevronsUpDown, ChevronDown, Search, RefreshCw } from 'lucide-react'
+import { Plus, Trash2, AlertTriangle, ChevronUp, ChevronsUpDown, ChevronDown, Search, RefreshCw, Download } from 'lucide-react'
 import { useCustomers } from '../hooks/useCustomers'
 import { useProducts } from '../hooks/useProducts'
 import { useActivePriceForPair } from '../hooks/usePriceLists'
@@ -13,7 +13,6 @@ const MONTH_KEYS   = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct
 const MONTHS_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS        = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 1 + i)
-
 
 function fmt(n) {
   if (!n && n !== 0) return '—'
@@ -33,6 +32,31 @@ function buildMonthRange(startYear, startMonth, endYear, endMonth) {
     if (m > 12) { m = 1; y++ }
   }
   return cols
+}
+
+async function exportToExcel(sorted, cols, startYear, endYear) {
+  const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/xlsx.mjs')
+  const headers = ['EAN', 'Desc. Forecast', 'Ragione Sociale', 'Listino Medio', ...cols.map(c => c.label), 'Pezzi', 'Valore €']
+  const data = sorted.map(row => {
+    const rowTotQty = cols.filter(c => c.year === row.year).reduce((s, c) => s + Number(row[c.key] || 0), 0)
+    const rowTotRev = rowTotQty * Number(row.avg_price_snapshot || 0)
+    return [
+      row.ean, row.product_description, row.company_name, Number(row.avg_price_snapshot || 0),
+      ...cols.map(c => c.year === row.year ? Number(row[c.key] || 0) : ''),
+      rowTotQty, rowTotRev,
+    ]
+  })
+  const totals = [
+    '', '', 'TOTALE', '',
+    ...cols.map(c => sorted.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0), 0)),
+    sorted.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0), 0),
+    sorted.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0) * Number(r.avg_price_snapshot || 0), 0),
+  ]
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...data, totals])
+  ws['!cols'] = [{ wch: 16 }, { wch: 30 }, { wch: 28 }, { wch: 12 }, ...cols.map(() => ({ wch: 10 })), { wch: 12 }, { wch: 14 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Forecast')
+  XLSX.writeFile(wb, `forecast_${startYear}_${endYear}.xlsx`)
 }
 
 function SortIcon({ col, sortCol, sortDir }) {
@@ -177,21 +201,16 @@ export default function ForecastPage() {
   const [filterRotation, setFilterRotation] = useState('')
   const [sortCol, setSortCol]               = useState('')
   const [sortDir, setSortDir]               = useState('asc')
+  const [exporting, setExporting]           = useState(false)
 
   const { data: rows = [], isLoading } = useForecastPivotAll()
   const { data: categories = [] }      = useCategories()
   const { data: rotations = [] }       = useRotations()
   const updateLine                     = useUpdateForecastLine()
   const deleteHeader                   = useDeleteForecastHeader()
-  const recalc = useRecalcForecastFromRotations()
+  const recalc                         = useRecalcForecastFromRotations()
 
   const cols = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
-
-  const rowsByHeader = useMemo(() => {
-    const map = {}
-    for (const r of rows) map[r.header_id] = r
-    return map
-  }, [rows])
 
   function handleSort(col) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -235,6 +254,12 @@ export default function ForecastPage() {
     await deleteHeader.mutateAsync({ id: row.header_id, year: row.year })
   }
 
+  async function handleExport() {
+    setExporting(true)
+    try { await exportToExcel(sorted, cols, startYear, endYear) }
+    finally { setExporting(false) }
+  }
+
   const colTotals = useMemo(() => cols.map(c => ({
     ...c,
     total: sorted.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0), 0)
@@ -243,24 +268,28 @@ export default function ForecastPage() {
   const thProps = { sortCol, sortDir, onSort: handleSort }
   const hasFilters = search || filterCustomer || filterProduct || filterCategory || filterRotation
 
-return (
+  return (
     <div>
       <PageHeader
         title="Forecast"
         description="Previsioni di vendita per cliente e prodotto"
         action={
-  <div className="flex gap-2">
-    <button className="btn-secondary" onClick={() => {
-      if (confirm('Ricalcolare il forecast da tutte le rotazioni attive?\nI valori inseriti manualmente nei mesi coperti dalle rotazioni verranno sovrascritti.')) {
-        recalc.mutate()
-      }
-    }} disabled={recalc.isPending}>
-      {recalc.isPending ? <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> : <><RefreshCw size={15} /> Ricalcola da rotazioni</>}
-    </button>
-    <button className="btn-primary" onClick={() => setModalOpen(true)}><Plus size={16} /> Aggiungi riga</button>
-  </div>
-}
- />
+          <div className="flex gap-2">
+            <button className="btn-secondary" onClick={() => {
+              if (confirm('Ricalcolare il forecast da tutte le rotazioni attive?\nI valori inseriti manualmente nei mesi coperti dalle rotazioni verranno sovrascritti.')) {
+                recalc.mutate()
+              }
+            }} disabled={recalc.isPending}>
+              {recalc.isPending ? <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> : <><RefreshCw size={15} /> Ricalcola da rotazioni</>}
+            </button>
+            <button className="btn-secondary" onClick={handleExport} disabled={exporting || sorted.length === 0}>
+              {exporting ? <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> : <><Download size={15} /> Esporta Excel</>}
+            </button>
+            <button className="btn-primary" onClick={() => setModalOpen(true)}><Plus size={16} /> Aggiungi riga</button>
+          </div>
+        }
+      />
+
       {/* Filtri */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '80px' }} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
@@ -276,11 +305,6 @@ return (
         <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '70px' }} value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-          <input className="input pl-8" style={{ width: '180px' }} placeholder="Cerca…" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
 
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
