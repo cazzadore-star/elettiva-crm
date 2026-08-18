@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Plus, Trash2, AlertTriangle, ChevronUp, ChevronsUpDown, ChevronDown, Search, RefreshCw, Download } from 'lucide-react'
+import { Plus, Trash2, AlertTriangle, ChevronUp, ChevronsUpDown, ChevronDown, Search, RefreshCw, Download, Users, Package, Tag, X } from 'lucide-react'
 import { useCustomers } from '../hooks/useCustomers'
 import { useProducts } from '../hooks/useProducts'
 import { useActivePriceForPair } from '../hooks/usePriceLists'
@@ -186,6 +186,68 @@ function sortRows(rows, col, dir) {
   })
 }
 
+// Modal generico multi-select con cerca
+function MultiSelectModal({ title, icon: Icon, options, selected, onClose, onApply }) {
+  const [sel, setSel] = useState(selected)
+  const [search, setSearch] = useState('')
+
+  const filtered = options.filter(o => o.toLowerCase().includes(search.toLowerCase()))
+
+  function toggle(name) {
+    setSel(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name])
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative rounded-xl shadow-xl w-full max-w-xl" style={{ backgroundColor: 'var(--bg-card)' }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <h2 className="font-semibold flex items-center gap-2" style={{ color: 'var(--text-main)' }}><Icon size={16} /> {title}</h2>
+          <button onClick={onClose} className="p-1 rounded" style={{ color: 'var(--text-muted)' }}><X size={18} /></button>
+        </div>
+        <div className="px-5 py-4">
+          <div className="relative mb-3">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+            <input className="input pl-8" placeholder="Cerca…" value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <div className="flex gap-2 mb-2">
+            <button className="text-xs hover:underline" style={{ color: 'var(--brand)' }} onClick={() => setSel(options)}>Seleziona tutti</button>
+            <span style={{ color: 'var(--border)' }}>·</span>
+            <button className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }} onClick={() => setSel([])}>Deseleziona tutti</button>
+          </div>
+          <div className="rounded-lg max-h-72 overflow-y-auto divide-y" style={{ border: `1px solid var(--border)` }}>
+            {filtered.map(name => (
+              <label key={name} className="flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors"
+                style={{ backgroundColor: sel.includes(name) ? 'var(--brand-50)' : 'transparent' }}>
+                <input type="checkbox" checked={sel.includes(name)} onChange={() => toggle(name)} className="rounded shrink-0" />
+                <span className="text-sm" style={{ color: 'var(--text-main)' }}>{name}</span>
+              </label>
+            ))}
+            {filtered.length === 0 && (
+              <p className="text-sm px-3 py-4 text-center" style={{ color: 'var(--text-muted)' }}>Nessun risultato.</p>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-4 border-t" style={{ borderColor: 'var(--border)' }}>
+          <button className="btn-secondary" onClick={onClose}>Annulla</button>
+          <button className="btn-primary" onClick={() => onApply(sel)}>
+            Applica {sel.length > 0 && sel.length < options.length ? `(${sel.length})` : ''}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FilterButton({ icon: Icon, label, count, total, onClick }) {
+  const active = count > 0 && count < total
+  return (
+    <button className="btn-secondary text-sm" onClick={onClick} style={active ? { borderColor: 'var(--brand)', color: 'var(--brand)' } : {}}>
+      <Icon size={14} /> {active ? `${label} (${count})` : `Tutti: ${label.toLowerCase()}`}
+    </button>
+  )
+}
+
 const SEL_STYLE = { width: 'auto' }
 
 export default function ForecastPage() {
@@ -195,13 +257,14 @@ export default function ForecastPage() {
   const [endYear,    setEndYear]            = useState(CURRENT_YEAR)
   const [modalOpen, setModalOpen]           = useState(false)
   const [search, setSearch]                 = useState('')
-  const [filterCustomer, setFilterCustomer] = useState('')
-  const [filterProduct, setFilterProduct]   = useState('')
-  const [filterCategory, setFilterCategory] = useState('')
+  const [filterCustomers, setFilterCustomers] = useState([]) // vuoto = tutti
+  const [filterProducts,  setFilterProducts]  = useState([])
+  const [filterCategories, setFilterCategories] = useState([])
   const [filterRotation, setFilterRotation] = useState('')
   const [sortCol, setSortCol]               = useState('')
   const [sortDir, setSortDir]               = useState('asc')
   const [exporting, setExporting]           = useState(false)
+  const [openModal, setOpenModal]           = useState(null) // 'customers' | 'products' | 'categories' | null
 
   const { data: rows = [], isLoading } = useForecastPivotAll()
   const { data: categories = [] }      = useCategories()
@@ -211,6 +274,10 @@ export default function ForecastPage() {
   const recalc                         = useRecalcForecastFromRotations()
 
   const cols = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
+
+  const allCustomerNames  = useMemo(() => [...new Set(rows.map(r => r.company_name))].sort(), [rows])
+  const allProductNames   = useMemo(() => [...new Set(rows.map(r => r.product_description))].sort(), [rows])
+  const allCategoryNames  = useMemo(() => categories.map(c => c.name), [categories])
 
   function handleSort(col) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -226,9 +293,12 @@ export default function ForecastPage() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     return rows.filter(r => {
-      if (filterCustomer && r.company_name        !== filterCustomer) return false
-      if (filterProduct  && r.product_description !== filterProduct)  return false
-      if (filterCategory && String(r.category_id) !== filterCategory) return false
+      if (filterCustomers.length  > 0 && !filterCustomers.includes(r.company_name))         return false
+      if (filterProducts.length   > 0 && !filterProducts.includes(r.product_description))   return false
+      if (filterCategories.length > 0) {
+        const catName = categories.find(c => c.id === r.category_id)?.name
+        if (!catName || !filterCategories.includes(catName)) return false
+      }
       if (q) {
         const words = q.split(/\s+/).filter(Boolean)
         const text  = [r.company_name, r.product_description, r.ean].join(' ').toLowerCase()
@@ -241,7 +311,7 @@ export default function ForecastPage() {
       }
       return true
     })
-  }, [rows, search, filterCustomer, filterProduct, filterCategory, rotationProductIds])
+  }, [rows, search, filterCustomers, filterProducts, filterCategories, categories, rotationProductIds, rotations, filterRotation])
 
   const sorted = useMemo(() => sortRows(filtered, sortCol, sortDir), [filtered, sortCol, sortDir])
 
@@ -266,7 +336,7 @@ export default function ForecastPage() {
   })), [sorted, cols])
 
   const thProps = { sortCol, sortDir, onSort: handleSort }
-  const hasFilters = search || filterCustomer || filterProduct || filterCategory || filterRotation
+  const hasFilters = search || filterCustomers.length > 0 || filterProducts.length > 0 || filterCategories.length > 0 || filterRotation
 
   return (
     <div>
@@ -311,26 +381,18 @@ export default function ForecastPage() {
           <input className="input pl-8" style={{ width: '180px' }} placeholder="Cerca…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
 
-        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '140px' }} value={filterCustomer} onChange={e => setFilterCustomer(e.target.value)}>
-          <option value="">Tutti i clienti</option>
-          {[...new Set(rows.map(r => r.company_name))].sort().map(n => <option key={n} value={n}>{n}</option>)}
-        </select>
-        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '140px' }} value={filterProduct} onChange={e => setFilterProduct(e.target.value)}>
-          <option value="">Tutti i prodotti</option>
-          {[...new Set(rows.map(r => r.product_description))].sort().map(n => <option key={n} value={n}>{n}</option>)}
-        </select>
-        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '140px' }} value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
-          <option value="">Tutte le categorie</option>
-          {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
-        </select>
-        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '140px' }} value={filterRotation} onChange={e => { setFilterRotation(e.target.value); setFilterCustomer(''); setFilterProduct('') }}>
+        <FilterButton icon={Users}   label="clienti"   count={filterCustomers.length}  total={allCustomerNames.length} onClick={() => setOpenModal('customers')} />
+        <FilterButton icon={Package} label="prodotti"  count={filterProducts.length}   total={allProductNames.length}  onClick={() => setOpenModal('products')} />
+        <FilterButton icon={Tag}     label="categorie" count={filterCategories.length} total={allCategoryNames.length} onClick={() => setOpenModal('categories')} />
+
+        <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '140px' }} value={filterRotation} onChange={e => setFilterRotation(e.target.value)}>
           <option value="">Tutte le rotazioni</option>
           {rotations.map(r => <option key={r.id} value={String(r.id)}>{r.company_name} — {r.product_count} prodotti</option>)}
         </select>
 
         {hasFilters && (
           <button className="text-sm hover:underline" style={{ color: 'var(--text-muted)' }}
-            onClick={() => { setSearch(''); setFilterCustomer(''); setFilterProduct(''); setFilterCategory(''); setFilterRotation('') }}>
+            onClick={() => { setSearch(''); setFilterCustomers([]); setFilterProducts([]); setFilterCategories([]); setFilterRotation('') }}>
             Pulisci
           </button>
         )}
@@ -423,6 +485,22 @@ export default function ForecastPage() {
         <Modal title="Aggiungi riga forecast" onClose={() => setModalOpen(false)}>
           <AddForecastRow onClose={() => setModalOpen(false)} />
         </Modal>
+      )}
+
+      {openModal === 'customers' && (
+        <MultiSelectModal title="Filtra per clienti" icon={Users} options={allCustomerNames} selected={filterCustomers}
+          onClose={() => setOpenModal(null)}
+          onApply={(sel) => { setFilterCustomers(sel.length === allCustomerNames.length ? [] : sel); setOpenModal(null) }} />
+      )}
+      {openModal === 'products' && (
+        <MultiSelectModal title="Filtra per prodotti" icon={Package} options={allProductNames} selected={filterProducts}
+          onClose={() => setOpenModal(null)}
+          onApply={(sel) => { setFilterProducts(sel.length === allProductNames.length ? [] : sel); setOpenModal(null) }} />
+      )}
+      {openModal === 'categories' && (
+        <MultiSelectModal title="Filtra per categorie" icon={Tag} options={allCategoryNames} selected={filterCategories}
+          onClose={() => setOpenModal(null)}
+          onApply={(sel) => { setFilterCategories(sel.length === allCategoryNames.length ? [] : sel); setOpenModal(null) }} />
       )}
     </div>
   )
