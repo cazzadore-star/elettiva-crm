@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
 import { Save } from 'lucide-react'
 import { useSettings, useUpdateSettings } from '../hooks/useSettings'
+import { useCategories, useToggleCategoryReportExclusion } from '../hooks/useCategories'
 import PageHeader from '../components/ui/PageHeader'
 
 export default function SettingsPage() {
   const { data: settings, isLoading } = useSettings()
   const update = useUpdateSettings()
+
+  const { data: categories = [] } = useCategories()
+  const toggleExclusion = useToggleCategoryReportExclusion()
 
   const [form, setForm] = useState({ period_start: '', period_end: '', default_rotation: '' })
   const [saved, setSaved] = useState(false)
@@ -40,7 +44,7 @@ export default function SettingsPage() {
     <div className="max-w-lg mx-auto">
       <PageHeader title="Impostazioni" description="Configurazione globale del sistema" />
 
-      <div className="card p-6">
+      <div className="card p-6 mb-4">
         <form onSubmit={handleSubmit} className="space-y-5">
 
           {/* Periodo */}
@@ -93,7 +97,7 @@ export default function SettingsPage() {
 
       {/* Riepilogo periodo corrente */}
       {settings && (
-        <div className="mt-4 px-4 py-3 rounded-lg text-sm border" style={{ backgroundColor: 'var(--alt-row)', borderColor: 'var(--border)', color: 'var(--text-sub)' }}>
+        <div className="mb-6 px-4 py-3 rounded-lg text-sm border" style={{ backgroundColor: 'var(--alt-row)', borderColor: 'var(--border)', color: 'var(--text-sub)' }}>
           <span className="font-medium" style={{ color: 'var(--text-main)' }}>Periodo attivo:</span>{' '}
           {new Date(settings.period_start).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}
           {' → '}
@@ -102,6 +106,31 @@ export default function SettingsPage() {
           <span className="font-medium" style={{ color: 'var(--text-main)' }}>{settings.default_rotation}</span>
         </div>
       )}
+
+      {/* Categorie escluse dal Report */}
+      <div className="card p-6">
+        <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-main)' }}>Categorie escluse dal Report</h2>
+        <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+          Le categorie escluse non compaiono nel Report per default. Possono comunque essere visualizzate temporaneamente da un filtro nella pagina Report.
+        </p>
+        <div className="space-y-1">
+          {categories.map(cat => (
+            <label key={cat.id} className="flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors"
+              style={{ backgroundColor: 'var(--alt-row)' }}>
+              <span className="text-sm" style={{ color: 'var(--text-main)' }}>{cat.name}</span>
+              <input
+                type="checkbox"
+                checked={!!cat.excluded_from_report}
+                onChange={e => toggleExclusion.mutate({ id: cat.id, excluded_from_report: e.target.checked })}
+                className="rounded"
+              />
+            </label>
+          ))}
+          {categories.length === 0 && (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessuna categoria disponibile.</p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

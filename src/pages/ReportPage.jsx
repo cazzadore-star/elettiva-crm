@@ -1,9 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { Download, RefreshCw, AlertTriangle, GripVertical, Search } from 'lucide-react'
 import { useReportPivot, usePopulateReportFromForecast, useUpsertReportLine } from '../hooks/useReport'
-import { useForecastPivot } from '../hooks/useForecast'
 import { useCategories, useUpdateCategoriesOrder } from '../hooks/useCategories'
-import { useSettings } from '../hooks/useSettings'
 import PageHeader from '../components/ui/PageHeader'
 
 const CURRENT_YEAR  = new Date().getFullYear()
@@ -14,9 +12,6 @@ const MONTHS_IT     = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','
 
 function fmt(n) {
   return Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-}
-function fmtEur(n) {
-  return Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 function getReportDesc(row) {
   return row.description_report || row.product_description || '—'
@@ -72,23 +67,23 @@ function EditableCell({ value, onSave }) {
 async function exportToExcel(groups, categories, uncategorized, cols, startYear, endYear) {
   const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/xlsx.mjs')
   const wsData = []
-  wsData.push(['Categoria','Desc. Report','SKU', ...cols.map(c => c.labelIT), 'Totale Pezzi', 'Totale Valore'])
+  wsData.push(['Categoria','Desc. Report','SKU', ...cols.map(c => c.labelIT), 'Totale Pezzi'])
   const exportCat = (catName, rows) => {
     if (rows.length === 0) return
-    wsData.push([catName, '', '', ...cols.map(() => ''), '', ''])
-    for (const { product_id, avgPrice, rowsByYear } of rows) {
+    wsData.push([catName, '', '', ...cols.map(() => ''), ''])
+    for (const { product_id, rowsByYear } of rows) {
       const vals = cols.map(c => getVal(rowsByYear, product_id, c.year, c.key))
       const qty  = vals.reduce((s, v) => s + v, 0)
-      wsData.push(['', getReportDesc(rows.find(r => r.product_id === product_id) || {}), rows.find(r => r.product_id === product_id)?.sku || '', ...vals, qty, ''])
+      wsData.push(['', getReportDesc(rows.find(r => r.product_id === product_id) || {}), rows.find(r => r.product_id === product_id)?.sku || '', ...vals, qty])
     }
     const subVals = cols.map(c => rows.reduce((s, { product_id, rowsByYear }) => s + getVal(rowsByYear, product_id, c.year, c.key), 0))
-    wsData.push([`Totale ${catName}`, '', '', ...subVals, subVals.reduce((s, v) => s + v, 0), ''])
+    wsData.push([`Totale ${catName}`, '', '', ...subVals, subVals.reduce((s, v) => s + v, 0)])
     wsData.push([])
   }
   for (const cat of categories) exportCat(cat.name, groups[cat.id] || [])
   if (uncategorized.length > 0) exportCat('Senza categoria', uncategorized)
   const ws = XLSX.utils.aoa_to_sheet(wsData)
-  ws['!cols'] = [{ wch:28 },{ wch:30 },{ wch:14 },...cols.map(()=>({ wch:12 })),{ wch:12 },{ wch:14 }]
+  ws['!cols'] = [{ wch:28 },{ wch:30 },{ wch:14 },...cols.map(()=>({ wch:12 })),{ wch:12 }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, `Report`)
   XLSX.writeFile(wb, `report_${startYear}_${endYear}.xlsx`)
@@ -135,6 +130,7 @@ export default function ReportPage() {
   const [search, setSearch]                 = useState('')
   const [exporting, setExporting]           = useState(false)
   const [showOrderModal, setShowOrderModal] = useState(false)
+  const [showExcluded, setShowExcluded]     = useState(false)
 
   const { data: rows = [], isLoading } = useReportPivot()
   const { data: categories = [] }      = useCategories()
@@ -143,6 +139,14 @@ export default function ReportPage() {
   const updateCatOrder = useUpdateCategoriesOrder()
 
   const cols = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
+
+  // Categorie visibili nel report: escluse le categorie con excluded_from_report,
+  // a meno che showExcluded non sia attivo
+  const visibleCategories = useMemo(
+    () => showExcluded ? categories : categories.filter(c => !c.excluded_from_report),
+    [categories, showExcluded]
+  )
+  const excludedCount = categories.filter(c => c.excluded_from_report).length
 
   const rowsByYearProduct = useMemo(() => {
     const map = {}
@@ -164,8 +168,9 @@ export default function ReportPage() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
-    if (!q) return uniqueProducts
-    return uniqueProducts.filter(p => [getReportDesc(p), p.sku, p.ean].some(v => (v||'').toLowerCase().includes(q)))
+    let list = uniqueProducts
+    if (q) list = list.filter(p => [getReportDesc(p), p.sku, p.ean].some(v => (v||'').toLowerCase().includes(q)))
+    return list
   }, [uniqueProducts, search])
 
   const groups = {}
@@ -194,20 +199,15 @@ export default function ReportPage() {
         if (p.category_id) { if (!exportGroups[p.category_id]) exportGroups[p.category_id] = []; exportGroups[p.category_id].push(item) }
         else exportUncategorized.push(item)
       })
-      await exportToExcel(exportGroups, categories, exportUncategorized, cols, startYear, endYear)
+      await exportToExcel(exportGroups, visibleCategories, exportUncategorized, cols, startYear, endYear)
     } finally { setExporting(false) }
   }
 
   async function handleSaveOrder(ordered) { await updateCatOrder.mutateAsync(ordered); setShowOrderModal(false) }
 
-  const grandTotals = useMemo(() => cols.map(c => ({
-    ...c, total: filtered.reduce((s, p) => s + getVal(rowsByYearProduct, p.product_id, c.year, c.key), 0)
-  })), [filtered, cols, rowsByYearProduct])
-
   const renderRows = (products, startIdx = 0) => products.map((p, i) => {
     const bg = (startIdx + i) % 2 === 1 ? 'var(--alt-row)' : 'var(--bg-card)'
     const rowTotQty = cols.reduce((s, c) => s + getVal(rowsByYearProduct, p.product_id, c.year, c.key), 0)
-    const rowTotRev = cols.reduce((s, c) => s + getVal(rowsByYearProduct, p.product_id, c.year, c.key) * (p.avg_price_snapshot || 0), 0)
     return (
       <tr key={p.product_id} style={{ backgroundColor: bg, borderBottom: `1px solid var(--border)` }}
         onMouseEnter={e => Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = 'var(--hover-row)')}
@@ -222,8 +222,7 @@ export default function ReportPage() {
             </td>
           )
         })}
-        <td className="px-3 py-2 text-right font-semibold sticky right-8 border-l" style={{ color: 'var(--text-main)', backgroundColor: bg, borderColor: 'var(--border)' }}>{fmt(rowTotQty)}</td>
-        <td className="px-3 py-2 text-right font-semibold sticky right-0" style={{ color: 'var(--text-main)', backgroundColor: bg }}>{fmtEur(rowTotRev)}</td>
+        <td className="px-3 py-2 text-right font-semibold sticky right-0 border-l" style={{ color: 'var(--text-main)', backgroundColor: bg, borderColor: 'var(--border)' }}>{fmt(rowTotQty)}</td>
       </tr>
     )
   })
@@ -231,14 +230,12 @@ export default function ReportPage() {
   const renderCategorySubtotal = (products, label) => {
     const subCols = cols.map(c => ({ ...c, total: products.reduce((s, p) => s + getVal(rowsByYearProduct, p.product_id, c.year, c.key), 0) }))
     const subQty = subCols.reduce((s, c) => s + c.total, 0)
-    const subRev = products.reduce((s, p) => s + cols.reduce((q, c) => q + getVal(rowsByYearProduct, p.product_id, c.year, c.key) * (p.avg_price_snapshot || 0), 0), 0)
     return (
       <tr className="font-semibold text-xs border-b" style={{ backgroundColor: 'var(--brand-50)', borderColor: 'var(--border)' }}>
-  <td className="px-3 py-2" colSpan={2} style={{ color: 'var(--brand)' }}>Totale {label}</td>
-  {subCols.map(c => <td key={`${c.year}-${c.month}`} className="px-2 py-2 text-right" style={{ color: 'var(--brand)' }}>{fmt(c.total)}</td>)}
-  <td className="px-3 py-2 text-right sticky right-8 border-l" style={{ color: 'var(--brand)', backgroundColor: 'var(--brand-50)', borderColor: 'var(--border)' }}>{fmt(subQty)}</td>
-  <td className="px-3 py-2 text-right sticky right-0" style={{ color: 'var(--brand)', backgroundColor: 'var(--brand-50)' }}>{fmtEur(subRev)}</td>
-</tr>
+        <td className="px-3 py-2" colSpan={2} style={{ color: 'var(--brand)' }}>Totale {label}</td>
+        {subCols.map(c => <td key={`${c.year}-${c.month}`} className="px-2 py-2 text-right" style={{ color: 'var(--brand)' }}>{fmt(c.total)}</td>)}
+        <td className="px-3 py-2 text-right sticky right-0 border-l" style={{ color: 'var(--brand)', backgroundColor: 'var(--brand-50)', borderColor: 'var(--border)' }}>{fmt(subQty)}</td>
+      </tr>
     )
   }
 
@@ -285,6 +282,14 @@ export default function ReportPage() {
           <input className="input pl-8" style={{ width: '200px' }} placeholder="Cerca prodotto, SKU, EAN…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         {search && <button className="text-sm hover:underline" style={{ color: 'var(--text-muted)' }} onClick={() => setSearch('')}>Pulisci</button>}
+
+        {excludedCount > 0 && (
+          <label className="flex items-center gap-2 text-sm cursor-pointer ml-2" style={{ color: 'var(--text-sub)' }}>
+            <input type="checkbox" checked={showExcluded} onChange={e => setShowExcluded(e.target.checked)} className="rounded" />
+            Mostra categorie escluse ({excludedCount})
+          </label>
+        )}
+
         <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)' }}>{cols.length} mes{cols.length === 1 ? 'e' : 'i'}</span>
       </div>
 
@@ -305,19 +310,21 @@ export default function ReportPage() {
                 <th className="text-left px-3 py-3 font-medium min-w-44" style={{ color: 'var(--text-sub)' }}>Desc. Report</th>
                 <th className="text-left px-3 py-3 font-medium min-w-20" style={{ color: 'var(--text-sub)' }}>SKU</th>
                 {cols.map(c => <th key={`${c.year}-${c.month}`} className="text-right px-2 py-3 font-medium min-w-14" style={{ color: 'var(--text-sub)' }}>{c.label}</th>)}
-                <th className="text-right px-3 py-3 font-medium min-w-20 sticky right-8 border-l" style={{ color: 'var(--text-sub)', backgroundColor: 'var(--alt-row)', borderColor: 'var(--border)' }}>Pezzi</th>
-                <th className="text-right px-3 py-3 font-medium min-w-24 sticky right-0" style={{ color: 'var(--text-sub)', backgroundColor: 'var(--alt-row)' }}>Valore €</th>
+                <th className="text-right px-3 py-3 font-medium min-w-20 sticky right-0 border-l" style={{ color: 'var(--text-sub)', backgroundColor: 'var(--alt-row)', borderColor: 'var(--border)' }}>Pezzi</th>
               </tr>
             </thead>
             <tbody>
-              {categories.map(cat => {
+              {visibleCategories.map(cat => {
                 const catProducts = groups[cat.id] || []
                 if (catProducts.length === 0) return null
                 return (
                   <React.Fragment key={`cat-${cat.id}`}>
                     <tr className="border-b" style={{ backgroundColor: 'var(--alt-row)', borderColor: 'var(--border)' }}>
-                      <td colSpan={2 + cols.length + 2} className="px-3 py-2 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--text-sub)' }}>
+                      <td colSpan={2 + cols.length + 1} className="px-3 py-2 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--text-sub)' }}>
                         {cat.name}
+                        {cat.excluded_from_report && (
+                          <span className="ml-2 font-normal text-xs" style={{ color: 'var(--text-muted)' }}>(esclusa dal report)</span>
+                        )}
                       </td>
                     </tr>
                     {renderRows(catProducts)}
@@ -328,7 +335,7 @@ export default function ReportPage() {
               {uncategorized.length > 0 && (
                 <React.Fragment key="cat-none">
                   <tr className="border-b" style={{ backgroundColor: 'var(--alt-row)', borderColor: 'var(--border)' }}>
-                    <td colSpan={2 + cols.length + 2} className="px-3 py-2 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--text-sub)' }}>
+                    <td colSpan={2 + cols.length + 1} className="px-3 py-2 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--text-sub)' }}>
                       Senza categoria
                     </td>
                   </tr>
@@ -337,18 +344,6 @@ export default function ReportPage() {
                 </React.Fragment>
               )}
             </tbody>
-            <tfoot>
-              <tr className="border-t-2 font-semibold text-xs" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--alt-row)' }}>
-                <td className="px-3 py-2" style={{ color: 'var(--text-sub)' }} colSpan={2}>Totale generale</td>
-                {grandTotals.map(c => <td key={`${c.year}-${c.month}`} className="px-2 py-2 text-right" style={{ color: 'var(--text-main)' }}>{fmt(c.total)}</td>)}
-                <td className="px-3 py-2 text-right sticky right-8 border-l" style={{ color: 'var(--text-main)', backgroundColor: 'var(--alt-row)', borderColor: 'var(--border)' }}>
-                  {fmt(grandTotals.reduce((s, c) => s + c.total, 0))}
-                </td>
-                <td className="px-3 py-2 text-right sticky right-0" style={{ color: 'var(--text-main)', backgroundColor: 'var(--alt-row)' }}>
-                  {fmtEur(filtered.reduce((s, p) => s + cols.reduce((q, c) => q + getVal(rowsByYearProduct, p.product_id, c.year, c.key) * (p.avg_price_snapshot || 0), 0), 0))}
-                </td>
-              </tr>
-            </tfoot>
           </table>
         </div>
       )}

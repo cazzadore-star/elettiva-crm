@@ -54,3 +54,17 @@ export function useUpdateCategoriesOrder() {
     onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
   })
 }
+
+export function useToggleCategoryReportExclusion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, excluded_from_report }) => {
+      const { error } = await supabase
+        .from('product_categories')
+        .update({ excluded_from_report })
+        .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+  })
+}
