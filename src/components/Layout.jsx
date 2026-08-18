@@ -5,7 +5,7 @@ import { useIsAdmin } from '../hooks/useUserRole'
 import {
   LayoutDashboard, Package, Users, Tag,
   BarChart2, FileText, LogOut, Zap,
-  RefreshCw, Archive, Settings, Sun, Moon, ClipboardList
+  RefreshCw, Archive, Settings, Sun, Moon, ClipboardList, History
 } from 'lucide-react'
 
 export default function Layout() {
@@ -24,7 +24,10 @@ export default function Layout() {
     { to: '/report',     label: 'Report',        icon: FileText },
     { to: '/archive',    label: 'Archivio',      icon: Archive },
     { to: '/settings',   label: 'Impostazioni',  icon: Settings },
-    ...(isAdmin ? [{ to: '/auditlog', label: 'Log operazioni', icon: ClipboardList }] : []),
+          { to: '/changelog', label: 'Aggiornamenti',  icon: History },
+    ...(isAdmin ? [
+      { to: '/auditlog',  label: 'Log operazioni', icon: ClipboardList },
+    ] : []),
   ]
 
   async function handleLogout() {
@@ -74,8 +77,8 @@ export default function Layout() {
             {theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
           </button>
 
-         <p className="text-xs truncate px-1" style={{ color: 'var(--text-muted)' }}>{user?.email}</p>
-         <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>Sviluppo Cazzadore Vittorio<br/>versione 1.4.7</p>
+          <p className="text-xs truncate px-1" style={{ color: 'var(--text-muted)' }}>{user?.email}</p>
+          <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>Sviluppo Cazzadore Vittorio<br/>versione 1.6.0</p>
 
           <button
             onClick={handleLogout}

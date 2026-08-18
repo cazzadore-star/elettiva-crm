@@ -10,6 +10,7 @@ import ForecastPage from './pages/ForecastPage'
 import ReportPage from './pages/ReportPage'
 import RotationsPage from './pages/RotationsPage'
 import AuditLogPage from './pages/AuditLogPage'
+import ChangelogPage from './pages/ChangelogPage'
 import ArchivePage from './pages/ArchivePage'
 import SettingsPage from './pages/SettingsPage'
 
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="archive"    element={<ArchivePage />} />
           <Route path="settings"   element={<SettingsPage />} />
           <Route path="auditlog"   element={<AuditLogPage />} />
+          <Route path="changelog"  element={<ChangelogPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
