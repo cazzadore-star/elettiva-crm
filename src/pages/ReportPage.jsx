@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
-import { Download, RefreshCw, AlertTriangle, GripVertical, Search } from 'lucide-react'
-import { useReportPivot, usePopulateReportFromForecast, useUpsertReportLine } from '../hooks/useReport'
+import { Download, RefreshCw, AlertTriangle, GripVertical, Search, Users, X } from 'lucide-react'
+import { useReportPivot, useReportPivotByCustomer, usePopulateReportFromForecast, useUpsertReportLine } from '../hooks/useReport'
 import { useCategories, useUpdateCategoriesOrder } from '../hooks/useCategories'
 import PageHeader from '../components/ui/PageHeader'
 
@@ -120,6 +120,59 @@ function CategoryOrderModal({ categories, onClose, onSave }) {
   )
 }
 
+// Modal multi-select clienti
+function CustomerFilterModal({ allCustomers, selected, onClose, onApply }) {
+  const [sel, setSel] = useState(selected)
+  const [search, setSearch] = useState('')
+
+  const filtered = allCustomers.filter(c => c.toLowerCase().includes(search.toLowerCase()))
+
+  function toggle(name) {
+    setSel(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name])
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative rounded-xl shadow-xl w-full max-w-md" style={{ backgroundColor: 'var(--bg-card)' }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <h2 className="font-semibold" style={{ color: 'var(--text-main)' }}>Filtra per clienti</h2>
+          <button onClick={onClose} className="p-1 rounded" style={{ color: 'var(--text-muted)' }}><X size={18} /></button>
+        </div>
+        <div className="px-5 py-4">
+          <div className="relative mb-3">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+            <input className="input pl-8" placeholder="Cerca cliente…" value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <div className="flex gap-2 mb-2">
+            <button className="text-xs hover:underline" style={{ color: 'var(--brand)' }} onClick={() => setSel(allCustomers)}>Seleziona tutti</button>
+            <span style={{ color: 'var(--border)' }}>·</span>
+            <button className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }} onClick={() => setSel([])}>Deseleziona tutti</button>
+          </div>
+          <div className="rounded-lg max-h-72 overflow-y-auto divide-y" style={{ border: `1px solid var(--border)` }}>
+            {filtered.map(name => (
+              <label key={name} className="flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors"
+                style={{ backgroundColor: sel.includes(name) ? 'var(--brand-50)' : 'transparent' }}>
+                <input type="checkbox" checked={sel.includes(name)} onChange={() => toggle(name)} className="rounded shrink-0" />
+                <span className="text-sm" style={{ color: 'var(--text-main)' }}>{name}</span>
+              </label>
+            ))}
+            {filtered.length === 0 && (
+              <p className="text-sm px-3 py-4 text-center" style={{ color: 'var(--text-muted)' }}>Nessun cliente trovato.</p>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-4 border-t" style={{ borderColor: 'var(--border)' }}>
+          <button className="btn-secondary" onClick={onClose}>Annulla</button>
+          <button className="btn-primary" onClick={() => onApply(sel)}>
+            Applica {sel.length > 0 && sel.length < allCustomers.length ? `(${sel.length})` : ''}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const SEL_STYLE = { width: 'auto' }
 
 export default function ReportPage() {
@@ -127,21 +180,46 @@ export default function ReportPage() {
   const [startYear,  setStartYear]  = useState(CURRENT_YEAR)
   const [endMonth,   setEndMonth]   = useState(12)
   const [endYear,    setEndYear]    = useState(CURRENT_YEAR)
-  const [search, setSearch]                 = useState('')
-  const [exporting, setExporting]           = useState(false)
-  const [showOrderModal, setShowOrderModal] = useState(false)
-  const [showExcluded, setShowExcluded]     = useState(false)
+  const [search, setSearch]                   = useState('')
+  const [exporting, setExporting]             = useState(false)
+  const [showOrderModal, setShowOrderModal]   = useState(false)
+  const [showExcluded, setShowExcluded]       = useState(false)
+  const [showCustomerModal, setShowCustomerModal] = useState(false)
+  const [selectedCustomers, setSelectedCustomers] = useState([]) // vuoto = tutti
 
-  const { data: rows = [], isLoading } = useReportPivot()
-  const { data: categories = [] }      = useCategories()
+  const { data: rowsAll = [] }              = useReportPivot()
+  const { data: rowsByCustomer = [], isLoading } = useReportPivotByCustomer()
+  const { data: categories = [] }           = useCategories()
   const populate       = usePopulateReportFromForecast()
   const upsertLine     = useUpsertReportLine()
   const updateCatOrder = useUpdateCategoriesOrder()
 
+  const hasCustomerFilter = selectedCustomers.length > 0
+  // Se filtro cliente attivo, ricostruisce le righe aggregate solo sui clienti selezionati
+  const rows = useMemo(() => {
+    if (!hasCustomerFilter) return rowsAll
+    const filteredByCustomer = rowsByCustomer.filter(r => selectedCustomers.includes(r.company_name))
+    const agg = {}
+    for (const r of filteredByCustomer) {
+      const key = `${r.product_id}_${r.year}`
+      if (!agg[key]) {
+        agg[key] = {
+          year: r.year, product_id: r.product_id, ean: r.ean, sku: r.sku,
+          description_report: r.description_report, product_description: r.product_description,
+          category_id: r.category_id, avg_price_snapshot: r.avg_price_snapshot,
+          jan:0, feb:0, mar:0, apr:0, may:0, jun:0, jul:0, aug:0, sep:0, oct:0, nov:0, dec:0, total_qty:0,
+        }
+      }
+      MONTH_KEYS.forEach(mk => { agg[key][mk] += Number(r[mk] || 0) })
+      agg[key].total_qty += Number(r.total_qty || 0)
+    }
+    return Object.values(agg)
+  }, [hasCustomerFilter, rowsAll, rowsByCustomer, selectedCustomers])
+
+  const allCustomerNames = useMemo(() => [...new Set(rowsByCustomer.map(r => r.company_name))].sort(), [rowsByCustomer])
+
   const cols = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
 
-  // Categorie visibili nel report: escluse le categorie con excluded_from_report,
-  // a meno che showExcluded non sia attivo
   const visibleCategories = useMemo(
     () => showExcluded ? categories : categories.filter(c => !c.excluded_from_report),
     [categories, showExcluded]
@@ -185,7 +263,7 @@ export default function ReportPage() {
   }
 
   async function handlePopulate() {
-    if (!confirm('Importa i valori dal Forecast nel Report?\n\nI valori già presenti NON verranno sovrascritti.')) return
+    if (!confirm('Importa i valori dal Forecast nel Report?\n\nTutti i valori esistenti per l\'anno verranno sovrascritti.')) return
     await populate.mutateAsync(CURRENT_YEAR)
   }
 
@@ -218,7 +296,10 @@ export default function ReportPage() {
           const val = getVal(rowsByYearProduct, p.product_id, c.year, c.key)
           return (
             <td key={`${c.year}-${c.month}`} className="px-1 py-2" style={{ backgroundColor: bg }}>
-              <EditableCell value={val} onSave={qty => handleCellSave(p.product_id, c, qty)} />
+              {hasCustomerFilter
+                ? <span className="block text-right px-1 py-0.5" style={{ color: 'var(--text-main)' }}>{fmt(val)}</span>
+                : <EditableCell value={val} onSave={qty => handleCellSave(p.product_id, c, qty)} />
+              }
             </td>
           )
         })}
@@ -277,11 +358,22 @@ export default function ReportPage() {
         <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '70px' }} value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
+
         <div className="relative ml-2">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
           <input className="input pl-8" style={{ width: '200px' }} placeholder="Cerca prodotto, SKU, EAN…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        {search && <button className="text-sm hover:underline" style={{ color: 'var(--text-muted)' }} onClick={() => setSearch('')}>Pulisci</button>}
+
+        <button className="btn-secondary text-sm" onClick={() => setShowCustomerModal(true)}>
+          <Users size={14} /> {hasCustomerFilter ? `Clienti (${selectedCustomers.length})` : 'Tutti i clienti'}
+        </button>
+        {hasCustomerFilter && (
+          <button className="text-sm hover:underline" style={{ color: 'var(--text-muted)' }} onClick={() => setSelectedCustomers([])}>
+            Rimuovi filtro clienti
+          </button>
+        )}
+
+        {search && <button className="text-sm hover:underline" style={{ color: 'var(--text-muted)' }} onClick={() => setSearch('')}>Pulisci ricerca</button>}
 
         {excludedCount > 0 && (
           <label className="flex items-center gap-2 text-sm cursor-pointer ml-2" style={{ color: 'var(--text-sub)' }}>
@@ -292,6 +384,12 @@ export default function ReportPage() {
 
         <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)' }}>{cols.length} mes{cols.length === 1 ? 'e' : 'i'}</span>
       </div>
+
+      {hasCustomerFilter && (
+        <div className="mb-4 px-4 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--brand-50)', color: 'var(--brand)' }}>
+          Report filtrato su {selectedCustomers.length} client{selectedCustomers.length === 1 ? 'e' : 'i'} — le celle non sono modificabili in questa vista filtrata.
+        </div>
+      )}
 
       {isLoading ? (
         <div className="card flex items-center justify-center py-16 text-sm" style={{ color: 'var(--text-muted)' }}>Caricamento…</div>
@@ -350,6 +448,15 @@ export default function ReportPage() {
 
       {showOrderModal && (
         <CategoryOrderModal categories={categories} onClose={() => setShowOrderModal(false)} onSave={handleSaveOrder} />
+      )}
+
+      {showCustomerModal && (
+        <CustomerFilterModal
+          allCustomers={allCustomerNames}
+          selected={selectedCustomers}
+          onClose={() => setShowCustomerModal(false)}
+          onApply={(sel) => { setSelectedCustomers(sel.length === allCustomerNames.length ? [] : sel); setShowCustomerModal(false) }}
+        />
       )}
     </div>
   )
