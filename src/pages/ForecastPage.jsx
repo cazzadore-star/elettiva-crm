@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Plus, Trash2, AlertTriangle, ChevronUp, ChevronsUpDown, ChevronDown, Search } from 'lucide-react'
-import { useForecastPivotAll, useCreateForecastHeader, useUpdateForecastLine, useDeleteForecastHeader } from '../hooks/useForecast'
+import { Plus, Trash2, AlertTriangle, ChevronUp, ChevronsUpDown, ChevronDown, Search, RefreshCw } from 'lucide-react'
 import { useCustomers } from '../hooks/useCustomers'
 import { useProducts } from '../hooks/useProducts'
 import { useActivePriceForPair } from '../hooks/usePriceLists'
@@ -8,11 +7,13 @@ import { useCategories } from '../hooks/useCategories'
 import { useRotations } from '../hooks/useRotations'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
+import { useForecastPivotAll, useCreateForecastHeader, useUpdateForecastLine, useDeleteForecastHeader, useRecalcForecastFromRotations } from '../hooks/useForecast'
 
 const MONTH_KEYS   = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
 const MONTHS_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS        = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 1 + i)
+
 
 function fmt(n) {
   if (!n && n !== 0) return '—'
@@ -178,6 +179,7 @@ export default function ForecastPage() {
   const { data: rotations = [] }       = useRotations()
   const updateLine                     = useUpdateForecastLine()
   const deleteHeader                   = useDeleteForecastHeader()
+  const recalc = useRecalcForecastFromRotations()
 
   const cols = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
 
@@ -237,14 +239,24 @@ export default function ForecastPage() {
   const thProps = { sortCol, sortDir, onSort: handleSort }
   const hasFilters = search || filterCustomer || filterProduct || filterCategory || filterRotation
 
-  return (
+return (
     <div>
       <PageHeader
         title="Forecast"
         description="Previsioni di vendita per cliente e prodotto"
-        action={<button className="btn-primary" onClick={() => setModalOpen(true)}><Plus size={16} /> Aggiungi riga</button>}
-      />
-
+        action={
+  <div className="flex gap-2">
+    <button className="btn-secondary" onClick={() => {
+      if (confirm('Ricalcolare il forecast da tutte le rotazioni attive?\nI valori inseriti manualmente nei mesi coperti dalle rotazioni verranno sovrascritti.')) {
+        recalc.mutate()
+      }
+    }} disabled={recalc.isPending}>
+      {recalc.isPending ? <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> : <><RefreshCw size={15} /> Ricalcola da rotazioni</>}
+    </button>
+    <button className="btn-primary" onClick={() => setModalOpen(true)}><Plus size={16} /> Aggiungi riga</button>
+  </div>
+}
+ />
       {/* Filtri */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '80px' }} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
@@ -260,6 +272,11 @@ export default function ForecastPage() {
         <select className="input text-sm" style={{ ...SEL_STYLE, minWidth: '70px' }} value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
+
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+          <input className="input pl-8" style={{ width: '180px' }} placeholder="Cerca…" value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
 
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />

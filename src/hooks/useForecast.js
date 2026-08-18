@@ -102,3 +102,14 @@ export function useDeleteForecastHeader() {
     },
   })
 }
+
+export function useRecalcForecastFromRotations() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc('recalc_forecast_from_rotations')
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['forecast'] }),
+  })
+}
