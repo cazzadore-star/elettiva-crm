@@ -23,7 +23,8 @@ async function exportArchiveToExcel(archive) {
   const ws = XLSX.utils.aoa_to_sheet([headers, ...data, totals])
   ws['!cols'] = [{ wch:16 },{ wch:30 },{ wch:28 },{ wch:12 },...MONTHS_IT.map(()=>({ wch:10 })),{ wch:12 },{ wch:14 }]
   const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, `Forecast ${archive.name}`)
+  const sheetName = `Forecast ${archive.name}`.slice(0, 31)
+XLSX.utils.book_append_sheet(wb, ws, sheetName)
   XLSX.writeFile(wb, `archivio_${archive.id}.xlsx`)
 }
 

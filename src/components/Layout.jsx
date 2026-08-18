@@ -75,7 +75,7 @@ export default function Layout() {
           </button>
 
          <p className="text-xs truncate px-1" style={{ color: 'var(--text-muted)' }}>{user?.email}</p>
-         <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>Sviluppo Cazzadore Vittorio<br/>versione 1.4.6</p>
+         <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>Sviluppo Cazzadore Vittorio<br/>versione 1.4.7</p>
 
           <button
             onClick={handleLogout}

@@ -235,7 +235,7 @@ function MultiSelectModal({ title, icon: Icon, options, selected, onClose, onApp
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative rounded-xl shadow-xl w-full max-w-md" style={{ backgroundColor: 'var(--bg-card)' }}>
+      <div className="relative rounded-xl shadow-xl w-full max-w-xl" style={{ backgroundColor: 'var(--bg-card)' }}>
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
           <h2 className="font-semibold flex items-center gap-2" style={{ color: 'var(--text-main)' }}><Icon size={16} /> {title}</h2>
           <button onClick={onClose} className="p-1 rounded" style={{ color: 'var(--text-muted)' }}><X size={18} /></button>
