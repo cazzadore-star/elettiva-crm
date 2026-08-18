@@ -110,6 +110,6 @@ export function useRecalcForecastFromRotations() {
       const { error } = await supabase.rpc('recalc_forecast_from_rotations')
       if (error) throw error
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['forecast'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
   })
 }
