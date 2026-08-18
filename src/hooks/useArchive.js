@@ -17,27 +17,19 @@ export function useArchives() {
   })
 }
 
+// Crea un archivio prendendo i dati del forecast per il range di mesi/anni indicato
 export function useCreateArchive() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ name, periodStart, periodEnd }) => {
-      const year = new Date(periodStart).getFullYear()
-
-      // Legge tutti i dati della forecast_pivot per l'anno
-      const { data: snapshot, error: snapError } = await supabase
-        .from('forecast_pivot')
-        .select('*')
-        .eq('year', year)
-      if (snapError) throw snapError
-
+    mutationFn: async ({ name, periodStart, periodEnd, startYear, rows }) => {
       const { data, error } = await supabase
         .from('forecast_archives')
         .insert({
           name,
-          year,
+          year: startYear,
           period_start: periodStart,
           period_end:   periodEnd,
-          data:         snapshot,
+          data:         rows,
         })
         .select()
         .single()

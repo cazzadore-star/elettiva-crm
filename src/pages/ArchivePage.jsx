@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Archive, Download, Trash2, Eye, X } from 'lucide-react'
-import { useArchives, useCreateArchive, useDeleteArchive, useArchiveDetail } from '../hooks/useArchive'
-import { useSettings } from '../hooks/useSettings'
+import { useArchives, useDeleteArchive, useArchiveDetail } from '../hooks/useArchive'
 import PageHeader from '../components/ui/PageHeader'
 
 const MONTH_KEYS   = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
@@ -116,71 +115,11 @@ function ArchivePreviewModal({ archiveId, onClose }) {
   )
 }
 
-// ── Modal nuova archiviazione ────────────────────────────────
-function NewArchiveModal({ onClose, onSave }) {
-  const { data: settings }    = useSettings()
-  const [name, setName]       = useState(`Archivio ${new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}`)
-  const [periodStart, setPeriodStart] = useState(settings?.period_start || '')
-  const [periodEnd,   setPeriodEnd]   = useState(settings?.period_end   || '')
-  const [saving, setSaving]   = useState(false)
-  const [error,  setError]    = useState('')
-
-  async function handleSubmit(e) {
-    e.preventDefault(); setError('')
-    if (!name.trim())    return setError("Inserisci un nome per l'archivio.")
-    if (!periodStart)    return setError('Inserisci la data di inizio.')
-    if (!periodEnd)      return setError('Inserisci la data di fine.')
-    if (periodEnd < periodStart) return setError('La data di fine deve essere successiva alla data di inizio.')
-    setSaving(true)
-    try { await onSave({ name: name.trim(), periodStart, periodEnd }); onClose() }
-    catch { setError("Errore durante l'archiviazione. Riprova.") }
-    finally { setSaving(false) }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative rounded-xl shadow-xl w-full max-w-md" style={{ backgroundColor: 'var(--bg-card)' }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="font-semibold" style={{ color: 'var(--text-main)' }}>Archivia Forecast</h2>
-          <button onClick={onClose} className="p-1 rounded" style={{ color: 'var(--text-muted)' }}>✕</button>
-        </div>
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Data inizio</label>
-              <input type="date" className="input" value={periodStart} onChange={e => setPeriodStart(e.target.value)} />
-            </div>
-            <div>
-              <label className="label">Data fine</label>
-              <input type="date" className="input" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <label className="label">Nome archivio</label>
-            <input className="input" value={name} onChange={e => setName(e.target.value)} autoFocus />
-            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Usa un nome che ti aiuti a riconoscere il momento della snapshot.</p>
-          </div>
-          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" className="btn-secondary" onClick={onClose}>Annulla</button>
-            <button type="submit" className="btn-primary" disabled={saving}>
-              {saving ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Archive size={14} /> Archivia ora</>}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
 // ── Pagina principale ────────────────────────────────────────
 export default function ArchivePage() {
-  const [newModalOpen,     setNewModalOpen]     = useState(false)
   const [previewArchiveId, setPreviewArchiveId] = useState(null)
 
   const { data: archives = [], isLoading } = useArchives()
-  const createArchive = useCreateArchive()
   const deleteArchive = useDeleteArchive()
 
   async function handleDelete(archive) {
@@ -192,12 +131,7 @@ export default function ArchivePage() {
     <div className="max-w-5xl mx-auto">
       <PageHeader
         title="Archivio Forecast"
-        description="Snapshot storici del forecast — sola lettura"
-        action={
-          <button className="btn-primary" onClick={() => setNewModalOpen(true)}>
-            <Archive size={16} /> Archivia ora
-          </button>
-        }
+        description="Snapshot storici del forecast — sola lettura. Per creare un nuovo archivio, usa il pulsante 'Archivia' nella pagina Forecast."
       />
 
       <div className="card overflow-hidden">
@@ -208,11 +142,8 @@ export default function ArchivePage() {
             <Archive size={32} style={{ color: 'var(--border)' }} />
             <span>Nessun archivio creato.</span>
             <p className="text-xs max-w-xs text-center" style={{ color: 'var(--text-muted)' }}>
-              Archivia il forecast per salvare una fotografia dei dati in questo momento.
+              Vai nella pagina Forecast e usa il pulsante "Archivia" per salvare una fotografia dei dati filtrati.
             </p>
-            <button className="btn-primary mt-2" onClick={() => setNewModalOpen(true)}>
-              <Archive size={15} /> Crea il primo archivio
-            </button>
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -267,9 +198,6 @@ export default function ArchivePage() {
         </p>
       )}
 
-      {newModalOpen && (
-        <NewArchiveModal onClose={() => setNewModalOpen(false)} onSave={createArchive.mutateAsync} />
-      )}
       {previewArchiveId && (
         <ArchivePreviewModal archiveId={previewArchiveId} onClose={() => setPreviewArchiveId(null)} />
       )}

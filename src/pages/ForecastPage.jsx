@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Plus, Trash2, AlertTriangle, ChevronUp, ChevronsUpDown, ChevronDown, Search, RefreshCw, Download, Users, Package, Tag, X } from 'lucide-react'
+import { Plus, Trash2, AlertTriangle, ChevronUp, ChevronsUpDown, ChevronDown, Search, RefreshCw, Download, Users, Package, Tag, X, Archive } from 'lucide-react'
 import { useCustomers } from '../hooks/useCustomers'
 import { useProducts } from '../hooks/useProducts'
 import { useActivePriceForPair } from '../hooks/usePriceLists'
 import { useCategories } from '../hooks/useCategories'
 import { useRotations } from '../hooks/useRotations'
+import { useCreateArchive } from '../hooks/useArchive'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 import { useForecastPivotAll, useCreateForecastHeader, useUpdateForecastLine, useDeleteForecastHeader, useRecalcForecastFromRotations } from '../hooks/useForecast'
@@ -129,11 +130,7 @@ function AddForecastRow({ onClose }) {
     try {
       await createHeader.mutateAsync({ year, customer_id: Number(customerId), product_id: Number(productId), avg_price_snapshot: price.avg_price })
       onClose()
-    } catch (err) {
-      setError(err.message?.includes('forecast_headers_unique')
-        ? 'Esiste già una riga forecast per questa combinazione in questo anno.'
-        : 'Errore nel salvataggio. Riprova.')
-    }
+    } catch (err) { console.error('Errore archiviazione:', err); setError("Errore durante l'archiviazione. Riprova.") }
   }
 
   return (
@@ -174,6 +171,44 @@ function AddForecastRow({ onClose }) {
   )
 }
 
+function ArchiveModal({ periodLabel, rowCount, onClose, onSave }) {
+  const [name, setName] = useState(`Archivio ${new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}`)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleSubmit(e) {
+    e.preventDefault(); setError('')
+    if (!name.trim()) return setError("Inserisci un nome per l'archivio.")
+    setSaving(true)
+    try { await onSave(name.trim()); onClose() }
+    catch (err) { console.error('Errore archiviazione:', err); setError("Errore durante l'archiviazione. Riprova.") }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <Modal title="Archivia Forecast" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'var(--brand-50)', color: 'var(--brand)' }}>
+          Periodo: <strong>{periodLabel}</strong><br />
+          Righe da archiviare: <strong>{rowCount}</strong> (con i filtri attualmente applicati)
+        </div>
+        <div>
+          <label className="label">Nome archivio</label>
+          <input className="input" value={name} onChange={e => setName(e.target.value)} autoFocus />
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Usa un nome che ti aiuti a riconoscere il momento della snapshot.</p>
+        </div>
+        {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" className="btn-secondary" onClick={onClose}>Annulla</button>
+          <button type="submit" className="btn-primary" disabled={saving}>
+            {saving ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Archive size={14} /> Archivia ora</>}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
 function sortRows(rows, col, dir) {
   if (!col) return rows
   return [...rows].sort((a, b) => {
@@ -200,7 +235,7 @@ function MultiSelectModal({ title, icon: Icon, options, selected, onClose, onApp
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative rounded-xl shadow-xl w-full max-w-xl" style={{ backgroundColor: 'var(--bg-card)' }}>
+      <div className="relative rounded-xl shadow-xl w-full max-w-md" style={{ backgroundColor: 'var(--bg-card)' }}>
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
           <h2 className="font-semibold flex items-center gap-2" style={{ color: 'var(--text-main)' }}><Icon size={16} /> {title}</h2>
           <button onClick={onClose} className="p-1 rounded" style={{ color: 'var(--text-muted)' }}><X size={18} /></button>
@@ -265,6 +300,7 @@ export default function ForecastPage() {
   const [sortDir, setSortDir]               = useState('asc')
   const [exporting, setExporting]           = useState(false)
   const [openModal, setOpenModal]           = useState(null) // 'customers' | 'products' | 'categories' | null
+  const [archiveModalOpen, setArchiveModalOpen] = useState(false)
 
   const { data: rows = [], isLoading } = useForecastPivotAll()
   const { data: categories = [] }      = useCategories()
@@ -272,6 +308,7 @@ export default function ForecastPage() {
   const updateLine                     = useUpdateForecastLine()
   const deleteHeader                   = useDeleteForecastHeader()
   const recalc                         = useRecalcForecastFromRotations()
+  const createArchive                  = useCreateArchive()
 
   const cols = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
 
@@ -330,6 +367,14 @@ export default function ForecastPage() {
     finally { setExporting(false) }
   }
 
+ async function handleArchive(name) {
+  const periodStart = new Date(startYear, startMonth - 1, 1).toISOString().slice(0, 10)
+  const periodEnd   = new Date(endYear, endMonth, 0).toISOString().slice(0, 10)
+  console.log('Chiamando createArchive con:', { name, periodStart, periodEnd, startYear, rowsLength: sorted.length })
+  const result = await createArchive.mutateAsync({ name, periodStart, periodEnd, startYear, rows: sorted })
+  console.log('Risultato createArchive:', result)
+}
+
   const colTotals = useMemo(() => cols.map(c => ({
     ...c,
     total: sorted.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0), 0)
@@ -354,6 +399,9 @@ export default function ForecastPage() {
             </button>
             <button className="btn-secondary" onClick={handleExport} disabled={exporting || sorted.length === 0}>
               {exporting ? <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> : <><Download size={15} /> Esporta Excel</>}
+            </button>
+            <button className="btn-secondary" onClick={() => setArchiveModalOpen(true)}>
+              <Archive size={15} /> Archivia
             </button>
             <button className="btn-primary" onClick={() => setModalOpen(true)}><Plus size={16} /> Aggiungi riga</button>
           </div>
@@ -501,6 +549,15 @@ export default function ForecastPage() {
         <MultiSelectModal title="Filtra per categorie" icon={Tag} options={allCategoryNames} selected={filterCategories}
           onClose={() => setOpenModal(null)}
           onApply={(sel) => { setFilterCategories(sel.length === allCategoryNames.length ? [] : sel); setOpenModal(null) }} />
+      )}
+
+      {archiveModalOpen && (
+        <ArchiveModal
+          periodLabel={`${MONTHS_SHORT[startMonth-1]} ${startYear} → ${MONTHS_SHORT[endMonth-1]} ${endYear}`}
+          rowCount={sorted.length}
+          onClose={() => setArchiveModalOpen(false)}
+          onSave={handleArchive}
+        />
       )}
     </div>
   )
