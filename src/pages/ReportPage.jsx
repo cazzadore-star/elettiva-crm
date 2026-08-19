@@ -450,6 +450,18 @@ export default function ReportPage() {
                 </React.Fragment>
               )}
             </tbody>
+            <tfoot>
+              <tr className="border-t-2 font-semibold text-xs" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--alt-row)' }}>
+                <td className="px-3 py-2" style={{ color: 'var(--text-sub)' }} colSpan={2}>Totale generale</td>
+                {cols.map(c => {
+                  const total = filtered.reduce((s, p) => s + getVal(rowsByYearProduct, p.product_id, c.year, c.key), 0)
+                  return <td key={`${c.year}-${c.month}`} className="px-2 py-2 text-right" style={{ color: 'var(--text-main)' }}>{fmt(total)}</td>
+                })}
+                <td className="px-3 py-2 text-right sticky right-0 border-l" style={{ color: 'var(--text-main)', backgroundColor: 'var(--alt-row)', borderColor: 'var(--border)' }}>
+                  {fmt(filtered.reduce((s, p) => s + cols.reduce((q, c) => q + getVal(rowsByYearProduct, p.product_id, c.year, c.key), 0), 0))}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
