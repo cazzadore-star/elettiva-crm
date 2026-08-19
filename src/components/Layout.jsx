@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useTheme } from '../hooks/useTheme'
-import { useIsAdmin } from '../hooks/useUserRole'
+import { useIsAdmin, useIsVisitor } from '../hooks/useUserRole'
 import {
   LayoutDashboard, Package, Users, Tag,
   BarChart2, FileText, LogOut, Zap,
@@ -12,6 +12,7 @@ export default function Layout() {
   const { user, logout }       = useAuth()
   const { theme, toggleTheme } = useTheme()
   const isAdmin                = useIsAdmin()
+  const isVisitor               = useIsVisitor()
   const navigate               = useNavigate()
 
   const NAV = [
@@ -23,11 +24,9 @@ export default function Layout() {
     { to: '/forecast',   label: 'Forecast',      icon: BarChart2 },
     { to: '/report',     label: 'Report',        icon: FileText },
     { to: '/archive',    label: 'Archivio',      icon: Archive },
-    { to: '/settings',   label: 'Impostazioni',  icon: Settings },
-          { to: '/changelog', label: 'Aggiornamenti',  icon: History },
-    ...(isAdmin ? [
-      { to: '/auditlog',  label: 'Log operazioni', icon: ClipboardList },
-    ] : []),
+    ...(!isVisitor ? [{ to: '/settings', label: 'Impostazioni', icon: Settings }] : []),
+    { to: '/changelog', label: 'Aggiornamenti', icon: History },
+    ...(isAdmin ? [{ to: '/auditlog', label: 'Log operazioni', icon: ClipboardList }] : []),
   ]
 
   async function handleLogout() {
@@ -78,7 +77,7 @@ export default function Layout() {
           </button>
 
           <p className="text-xs truncate px-1" style={{ color: 'var(--text-muted)' }}>{user?.email}</p>
-          <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>Sviluppo Cazzadore Vittorio<br/>versione 1.6.0</p>
+          <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>Sviluppo Cazzadore Vittorio<br/>versione 1.7.0</p>
 
           <button
             onClick={handleLogout}

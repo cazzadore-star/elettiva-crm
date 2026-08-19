@@ -4,6 +4,7 @@ import { useProducts, useUpsertProduct, useToggleProductActive } from '../hooks/
 import { useCategories, useAddCategory } from '../hooks/useCategories'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
+import { useCanEdit } from '../hooks/useUserRole'
 
 const EMPTY_FORM = { ean: '', sku: '', description: '', description_report: '', category_id: '' }
 
@@ -22,6 +23,7 @@ export default function ProductsPage() {
   const upsert = useUpsertProduct()
   const toggle = useToggleProductActive()
   const addCat = useAddCategory()
+  const canEdit = useCanEdit()
 
   const filtered = products.filter(p => {
     const q = search.toLowerCase()
@@ -92,9 +94,11 @@ export default function ProductsPage() {
         title="Prodotti"
         description="Gestione anagrafica prodotti"
         action={
-          <button className="btn-primary" onClick={openNew}>
-            <Plus size={16} /> Nuovo prodotto
-          </button>
+          canEdit ? (
+            <button className="btn-primary" onClick={openNew}>
+              <Plus size={16} /> Nuovo prodotto
+            </button>
+          ) : null
         }
       />
 
@@ -131,7 +135,7 @@ export default function ProductsPage() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-sm gap-2" style={{ color: 'var(--text-muted)' }}>
             <span>Nessun prodotto trovato.</span>
-            {!search && !filterCategory && (
+            {!search && !filterCategory && canEdit && (
               <button className="btn-primary mt-2" onClick={openNew}>
                 <Plus size={15} /> Aggiungi il primo prodotto
               </button>
@@ -147,7 +151,7 @@ export default function ProductsPage() {
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Desc. Report</th>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Categoria</th>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Stato</th>
-                <th className="px-4 py-3" />
+                {canEdit && <th className="px-4 py-3" />}
               </tr>
             </thead>
             <tbody>
@@ -176,26 +180,28 @@ export default function ProductsPage() {
                         : <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">Disattivato</span>
                       }
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(product)} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}
-                          onMouseEnter={e => { e.currentTarget.style.color = 'var(--brand)'; e.currentTarget.style.backgroundColor = 'var(--brand-50)' }}
-                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
-                          title="Modifica">
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          onClick={() => toggle.mutateAsync({ id: product.id, active: !product.active })}
-                          className="p-1.5 rounded-lg transition-colors"
-                          style={{ color: 'var(--text-muted)' }}
-                          onMouseEnter={e => { e.currentTarget.style.color = product.active ? '#dc2626' : '#16a34a'; e.currentTarget.style.backgroundColor = product.active ? '#fee2e2' : '#dcfce7' }}
-                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
-                          title={product.active ? 'Disattiva' : 'Riattiva'}
-                        >
-                          {product.active ? <PowerOff size={15} /> : <Power size={15} />}
-                        </button>
-                      </div>
-                    </td>
+                    {canEdit && (
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => openEdit(product)} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}
+                            onMouseEnter={e => { e.currentTarget.style.color = 'var(--brand)'; e.currentTarget.style.backgroundColor = 'var(--brand-50)' }}
+                            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
+                            title="Modifica">
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            onClick={() => toggle.mutateAsync({ id: product.id, active: !product.active })}
+                            className="p-1.5 rounded-lg transition-colors"
+                            style={{ color: 'var(--text-muted)' }}
+                            onMouseEnter={e => { e.currentTarget.style.color = product.active ? '#dc2626' : '#16a34a'; e.currentTarget.style.backgroundColor = product.active ? '#fee2e2' : '#dcfce7' }}
+                            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
+                            title={product.active ? 'Disattiva' : 'Riattiva'}
+                          >
+                            {product.active ? <PowerOff size={15} /> : <Power size={15} />}
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 )
               })}

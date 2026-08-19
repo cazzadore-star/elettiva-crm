@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react'
 import { Download, RefreshCw, AlertTriangle, GripVertical, Search, Users, X } from 'lucide-react'
 import { useReportPivot, useReportPivotByCustomer, usePopulateReportFromForecast, useUpsertReportLine } from '../hooks/useReport'
 import { useCategories, useUpdateCategoriesOrder } from '../hooks/useCategories'
+import { useCanEdit } from '../hooks/useUserRole'
 import PageHeader from '../components/ui/PageHeader'
 
 const CURRENT_YEAR  = new Date().getFullYear()
@@ -34,9 +35,13 @@ function getVal(rowsByYearProduct, productId, year, monthKey) {
   return row ? Number(row[monthKey] || 0) : 0
 }
 
-function EditableCell({ value, onSave }) {
+function EditableCell({ value, onSave, readOnly }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal]         = useState(value ?? 0)
+
+  if (readOnly) {
+    return <span className="block text-right px-1 py-0.5" style={{ color: 'var(--text-main)' }}>{fmt(value)}</span>
+  }
 
   if (editing) {
     return (
@@ -193,6 +198,7 @@ export default function ReportPage() {
   const populate       = usePopulateReportFromForecast()
   const upsertLine     = useUpsertReportLine()
   const updateCatOrder = useUpdateCategoriesOrder()
+  const canEdit        = useCanEdit()
 
   const hasCustomerFilter = selectedCustomers.length > 0
   // Se filtro cliente attivo, ricostruisce le righe aggregate solo sui clienti selezionati
@@ -296,7 +302,7 @@ export default function ReportPage() {
           const val = getVal(rowsByYearProduct, p.product_id, c.year, c.key)
           return (
             <td key={`${c.year}-${c.month}`} className="px-1 py-2" style={{ backgroundColor: bg }}>
-              {hasCustomerFilter
+              {(hasCustomerFilter || !canEdit)
                 ? <span className="block text-right px-1 py-0.5" style={{ color: 'var(--text-main)' }}>{fmt(val)}</span>
                 : <EditableCell value={val} onSave={qty => handleCellSave(p.product_id, c, qty)} />
               }
@@ -327,10 +333,12 @@ export default function ReportPage() {
         description="Valori per categoria — mesi anticipati di 1 rispetto al Forecast"
         action={
           <div className="flex gap-2">
-            <button className="btn-secondary" onClick={() => setShowOrderModal(true)}>Ordina categorie</button>
-            <button className="btn-secondary" onClick={handlePopulate} disabled={populate.isPending}>
-              {populate.isPending ? <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> : <><RefreshCw size={14} /> Importa da Forecast</>}
-            </button>
+            {canEdit && <button className="btn-secondary" onClick={() => setShowOrderModal(true)}>Ordina categorie</button>}
+            {canEdit && (
+              <button className="btn-secondary" onClick={handlePopulate} disabled={populate.isPending}>
+                {populate.isPending ? <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> : <><RefreshCw size={14} /> Importa da Forecast</>}
+              </button>
+            )}
             <button className="btn-primary" onClick={handleExport} disabled={exporting || filtered.length === 0}>
               {exporting ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Download size={14} /> Esporta Excel</>}
             </button>

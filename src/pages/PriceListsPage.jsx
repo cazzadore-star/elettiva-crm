@@ -5,6 +5,7 @@ import { useCustomers } from '../hooks/useCustomers'
 import { useProducts } from '../hooks/useProducts'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
+import { useCanEdit } from '../hooks/useUserRole'
 
 const EMPTY_FORM = { customer_id: '', product_id: '', avg_price: '', selectedProducts: [], productSearch: '' }
 
@@ -29,6 +30,7 @@ export default function PriceListsPage() {
   const upsert     = useUpsertPriceList()
   const toggle     = useTogglePriceListActive()
   const bulkUpdate = useBulkUpdatePriceList()
+  const canEdit    = useCanEdit()
 
   const filtered = priceLists.filter(pl => {
     const q = search.toLowerCase()
@@ -83,12 +85,14 @@ export default function PriceListsPage() {
         title="Listini medi"
         description="Prezzi medi per combinazione cliente + prodotto"
         action={
-          <div className="flex gap-2">
-            <button className="btn-secondary" onClick={() => { setBulkModalOpen(true); setBulkError(''); setBulkDone(false) }}>
-              <RefreshCw size={15} /> Aggiorna listino
-            </button>
-            <button className="btn-primary" onClick={openNew}><Plus size={16} /> Nuovo listino</button>
-          </div>
+          canEdit ? (
+            <div className="flex gap-2">
+              <button className="btn-secondary" onClick={() => { setBulkModalOpen(true); setBulkError(''); setBulkDone(false) }}>
+                <RefreshCw size={15} /> Aggiorna listino
+              </button>
+              <button className="btn-primary" onClick={openNew}><Plus size={16} /> Nuovo listino</button>
+            </div>
+          ) : null
         }
       />
 
@@ -111,7 +115,7 @@ export default function PriceListsPage() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-sm gap-2" style={{ color: 'var(--text-muted)' }}>
             <span>Nessun listino trovato.</span>
-            {!search && <button className="btn-primary mt-2" onClick={openNew}><Plus size={15} /> Aggiungi il primo listino</button>}
+            {!search && canEdit && <button className="btn-primary mt-2" onClick={openNew}><Plus size={15} /> Aggiungi il primo listino</button>}
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -122,7 +126,7 @@ export default function PriceListsPage() {
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>EAN</th>
                 <th className="text-right px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Listino medio €</th>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Stato</th>
-                <th className="px-4 py-3" />
+                {canEdit && <th className="px-4 py-3" />}
               </tr>
             </thead>
             <tbody>
@@ -137,25 +141,28 @@ export default function PriceListsPage() {
                     <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>{pl.products?.ean}</td>
                     <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--text-main)' }}>{fmt(pl.avg_price)}</td>
                     <td className="px-4 py-3">
-                      {pl.active
-                        ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">Attivo</span>
-                        : <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">Disattivato</span>
-                      }
+                      {(() => {
+                        return pl.active
+                          ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">Attivo</span>
+                          : <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">Disattivato</span>
+                      })()}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(pl)} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}
-                          onMouseEnter={e => { e.currentTarget.style.color = 'var(--brand)'; e.currentTarget.style.backgroundColor = 'var(--brand-50)' }}
-                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
-                          title="Modifica prezzo"><Pencil size={15} /></button>
-                        <button onClick={() => toggle.mutateAsync({ id: pl.id, active: !pl.active })} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}
-                          onMouseEnter={e => { e.currentTarget.style.color = pl.active ? '#dc2626' : '#16a34a'; e.currentTarget.style.backgroundColor = pl.active ? '#fee2e2' : '#dcfce7' }}
-                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
-                          title={pl.active ? 'Disattiva' : 'Riattiva'}>
-                          {pl.active ? <PowerOff size={15} /> : <Power size={15} />}
-                        </button>
-                      </div>
-                    </td>
+                    {canEdit && (
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => openEdit(pl)} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}
+                            onMouseEnter={e => { e.currentTarget.style.color = 'var(--brand)'; e.currentTarget.style.backgroundColor = 'var(--brand-50)' }}
+                            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
+                            title="Modifica prezzo"><Pencil size={15} /></button>
+                          <button onClick={() => toggle.mutateAsync({ id: pl.id, active: !pl.active })} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}
+                            onMouseEnter={e => { e.currentTarget.style.color = pl.active ? '#dc2626' : '#16a34a'; e.currentTarget.style.backgroundColor = pl.active ? '#fee2e2' : '#dcfce7' }}
+                            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
+                            title={pl.active ? 'Disattiva' : 'Riattiva'}>
+                            {pl.active ? <PowerOff size={15} /> : <Power size={15} />}
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 )
               })}

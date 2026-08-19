@@ -19,6 +19,20 @@ export function useUserRole() {
 }
 
 export function useIsAdmin() {
-  const { data: role } = useUserRole()
+  const { data: role, isLoading } = useUserRole()
+  if (isLoading) return false
   return role === 'admin'
+}
+
+export function useIsVisitor() {
+  const { data: role, isLoading } = useUserRole()
+  if (isLoading) return false
+  return role === 'visitor'
+}
+
+// true se l'utente può modificare/creare/eliminare dati (admin o operator)
+export function useCanEdit() {
+  const { data: role, isLoading } = useUserRole()
+  if (isLoading) return false
+  return role === 'admin' || role === 'operator'
 }

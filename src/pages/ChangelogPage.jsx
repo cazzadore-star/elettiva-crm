@@ -5,6 +5,15 @@ import PageHeader from '../components/ui/PageHeader'
 // ============================================================
 const CHANGELOG = [
   {
+    version: 'v1.7.0',
+    date: '2026-08-19',
+    items: [
+      'Aggiunto il ruolo utente "Visitatore": accesso in sola consultazione a tutte le pagine, con filtri, ricerca ed export sempre disponibili ma senza possibilità di creare, modificare o eliminare dati',
+      'Il Visitatore non vede la voce "Impostazioni" nel menu',
+      'Reintrodotta la riga "Totale generale" nel Report, che era stata rimossa in precedenza su richiesta',
+    ],
+  },
+  {
     version: 'v1.6.0',
     date: '2026-08-18',
     items: [

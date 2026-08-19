@@ -3,6 +3,7 @@ import { Plus, Search, Pencil, PowerOff, Power } from 'lucide-react'
 import { useCustomers, useUpsertCustomer, useToggleCustomerActive } from '../hooks/useCustomers'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
+import { useCanEdit } from '../hooks/useUserRole'
 
 const EMPTY_FORM = { company_name: '' }
 
@@ -16,6 +17,7 @@ export default function CustomersPage() {
   const { data: customers = [], isLoading } = useCustomers({ includeInactive: showInactive })
   const upsert = useUpsertCustomer()
   const toggle = useToggleCustomerActive()
+  const canEdit = useCanEdit()
 
   const filtered = customers.filter(c =>
     c.company_name.toLowerCase().includes(search.toLowerCase())
@@ -55,9 +57,11 @@ export default function CustomersPage() {
         title="Clienti"
         description="Gestione anagrafica clienti"
         action={
-          <button className="btn-primary" onClick={openNew}>
-            <Plus size={16} /> Nuovo cliente
-          </button>
+          canEdit ? (
+            <button className="btn-primary" onClick={openNew}>
+              <Plus size={16} /> Nuovo cliente
+            </button>
+          ) : null
         }
       />
 
@@ -80,7 +84,7 @@ export default function CustomersPage() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-sm gap-2" style={{ color: 'var(--text-muted)' }}>
             <span>Nessun cliente trovato.</span>
-            {!search && (
+            {!search && canEdit && (
               <button className="btn-primary mt-2" onClick={openNew}><Plus size={15} /> Aggiungi il primo cliente</button>
             )}
           </div>
@@ -90,7 +94,7 @@ export default function CustomersPage() {
               <tr className="border-b" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--alt-row)' }}>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Ragione sociale</th>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Stato</th>
-                <th className="px-4 py-3" />
+                {canEdit && <th className="px-4 py-3" />}
               </tr>
             </thead>
             <tbody>
@@ -110,30 +114,32 @@ export default function CustomersPage() {
                         : <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">Disattivato</span>
                       }
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => openEdit(customer)}
-                          className="p-1.5 rounded-lg transition-colors"
-                          style={{ color: 'var(--text-muted)' }}
-                          onMouseEnter={e => { e.currentTarget.style.color = 'var(--brand)'; e.currentTarget.style.backgroundColor = 'var(--brand-50)' }}
-                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
-                          title="Modifica"
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          onClick={() => toggle.mutateAsync({ id: customer.id, active: !customer.active })}
-                          className="p-1.5 rounded-lg transition-colors"
-                          style={{ color: 'var(--text-muted)' }}
-                          onMouseEnter={e => { e.currentTarget.style.color = customer.active ? '#dc2626' : '#16a34a'; e.currentTarget.style.backgroundColor = customer.active ? '#fee2e2' : '#dcfce7' }}
-                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
-                          title={customer.active ? 'Disattiva' : 'Riattiva'}
-                        >
-                          {customer.active ? <PowerOff size={15} /> : <Power size={15} />}
-                        </button>
-                      </div>
-                    </td>
+                    {canEdit && (
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openEdit(customer)}
+                            className="p-1.5 rounded-lg transition-colors"
+                            style={{ color: 'var(--text-muted)' }}
+                            onMouseEnter={e => { e.currentTarget.style.color = 'var(--brand)'; e.currentTarget.style.backgroundColor = 'var(--brand-50)' }}
+                            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
+                            title="Modifica"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            onClick={() => toggle.mutateAsync({ id: customer.id, active: !customer.active })}
+                            className="p-1.5 rounded-lg transition-colors"
+                            style={{ color: 'var(--text-muted)' }}
+                            onMouseEnter={e => { e.currentTarget.style.color = customer.active ? '#dc2626' : '#16a34a'; e.currentTarget.style.backgroundColor = customer.active ? '#fee2e2' : '#dcfce7' }}
+                            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
+                            title={customer.active ? 'Disattiva' : 'Riattiva'}
+                          >
+                            {customer.active ? <PowerOff size={15} /> : <Power size={15} />}
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 )
               })}

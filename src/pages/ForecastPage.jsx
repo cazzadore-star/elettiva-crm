@@ -9,6 +9,7 @@ import { useCreateArchive } from '../hooks/useArchive'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 import { useForecastPivotAll, useCreateForecastHeader, useUpdateForecastLine, useDeleteForecastHeader, useRecalcForecastFromRotations } from '../hooks/useForecast'
+import { useCanEdit } from '../hooks/useUserRole'
 
 const MONTH_KEYS   = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
 const MONTHS_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
@@ -77,13 +78,17 @@ function SortableTh({ col, label, sortCol, sortDir, onSort, className }) {
   )
 }
 
-function EditableCell({ value, onSave }) {
+function EditableCell({ value, onSave, readOnly }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal]         = useState(value ?? 0)
 
   useEffect(() => {
     if (!editing) setVal(value ?? 0)
   }, [value, editing])
+
+  if (readOnly) {
+    return <span className="block text-right px-1 py-0.5" style={{ color: 'var(--text-main)' }}>{fmt(value)}</span>
+  }
 
   if (editing) {
     return (
@@ -130,7 +135,11 @@ function AddForecastRow({ onClose }) {
     try {
       await createHeader.mutateAsync({ year, customer_id: Number(customerId), product_id: Number(productId), avg_price_snapshot: price.avg_price })
       onClose()
-    } catch (err) { console.error('Errore archiviazione:', err); setError("Errore durante l'archiviazione. Riprova.") }
+    } catch (err) {
+      setError(err.message?.includes('forecast_headers_unique')
+        ? 'Esiste già una riga forecast per questa combinazione in questo anno.'
+        : 'Errore nel salvataggio. Riprova.')
+    }
   }
 
   return (
@@ -181,7 +190,7 @@ function ArchiveModal({ periodLabel, rowCount, onClose, onSave }) {
     if (!name.trim()) return setError("Inserisci un nome per l'archivio.")
     setSaving(true)
     try { await onSave(name.trim()); onClose() }
-    catch (err) { console.error('Errore archiviazione:', err); setError("Errore durante l'archiviazione. Riprova.") }
+    catch { setError("Errore durante l'archiviazione. Riprova.") }
     finally { setSaving(false) }
   }
 
@@ -235,7 +244,7 @@ function MultiSelectModal({ title, icon: Icon, options, selected, onClose, onApp
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative rounded-xl shadow-xl w-full max-w-xl" style={{ backgroundColor: 'var(--bg-card)' }}>
+      <div className="relative rounded-xl shadow-xl w-full max-w-md" style={{ backgroundColor: 'var(--bg-card)' }}>
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
           <h2 className="font-semibold flex items-center gap-2" style={{ color: 'var(--text-main)' }}><Icon size={16} /> {title}</h2>
           <button onClick={onClose} className="p-1 rounded" style={{ color: 'var(--text-muted)' }}><X size={18} /></button>
@@ -309,6 +318,7 @@ export default function ForecastPage() {
   const deleteHeader                   = useDeleteForecastHeader()
   const recalc                         = useRecalcForecastFromRotations()
   const createArchive                  = useCreateArchive()
+  const canEdit                        = useCanEdit()
 
   const cols = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
 
@@ -367,13 +377,11 @@ export default function ForecastPage() {
     finally { setExporting(false) }
   }
 
- async function handleArchive(name) {
-  const periodStart = new Date(startYear, startMonth - 1, 1).toISOString().slice(0, 10)
-  const periodEnd   = new Date(endYear, endMonth, 0).toISOString().slice(0, 10)
-  console.log('Chiamando createArchive con:', { name, periodStart, periodEnd, startYear, rowsLength: sorted.length })
-  const result = await createArchive.mutateAsync({ name, periodStart, periodEnd, startYear, rows: sorted })
-  console.log('Risultato createArchive:', result)
-}
+  async function handleArchive(name) {
+    const periodStart = new Date(startYear, startMonth - 1, 1).toISOString().slice(0, 10)
+    const periodEnd   = new Date(endYear, endMonth, 0).toISOString().slice(0, 10)
+    await createArchive.mutateAsync({ name, periodStart, periodEnd, startYear, rows: sorted })
+  }
 
   const colTotals = useMemo(() => cols.map(c => ({
     ...c,
@@ -390,20 +398,26 @@ export default function ForecastPage() {
         description="Previsioni di vendita per cliente e prodotto"
         action={
           <div className="flex gap-2">
-            <button className="btn-secondary" onClick={() => {
-              if (confirm('Ricalcolare il forecast da tutte le rotazioni attive?\nI valori inseriti manualmente nei mesi coperti dalle rotazioni verranno sovrascritti.')) {
-                recalc.mutate()
-              }
-            }} disabled={recalc.isPending}>
-              {recalc.isPending ? <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> : <><RefreshCw size={15} /> Ricalcola da rotazioni</>}
-            </button>
+            {canEdit && (
+              <button className="btn-secondary" onClick={() => {
+                if (confirm('Ricalcolare il forecast da tutte le rotazioni attive?\nI valori inseriti manualmente nei mesi coperti dalle rotazioni verranno sovrascritti.')) {
+                  recalc.mutate()
+                }
+              }} disabled={recalc.isPending}>
+                {recalc.isPending ? <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> : <><RefreshCw size={15} /> Ricalcola da rotazioni</>}
+              </button>
+            )}
             <button className="btn-secondary" onClick={handleExport} disabled={exporting || sorted.length === 0}>
               {exporting ? <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" /> : <><Download size={15} /> Esporta Excel</>}
             </button>
-            <button className="btn-secondary" onClick={() => setArchiveModalOpen(true)}>
-              <Archive size={15} /> Archivia
-            </button>
-            <button className="btn-primary" onClick={() => setModalOpen(true)}><Plus size={16} /> Aggiungi riga</button>
+            {canEdit && (
+              <button className="btn-secondary" onClick={() => setArchiveModalOpen(true)}>
+                <Archive size={15} /> Archivia
+              </button>
+            )}
+            {canEdit && (
+              <button className="btn-primary" onClick={() => setModalOpen(true)}><Plus size={16} /> Aggiungi riga</button>
+            )}
           </div>
         }
       />
@@ -468,7 +482,7 @@ export default function ForecastPage() {
                 ))}
                 <SortableTh col="total_qty"     label="Pezzi"   {...thProps} className="text-right min-w-20 sticky right-16 border-l" />
                 <SortableTh col="total_revenue" label="Valore €" {...thProps} className="text-right min-w-24 sticky right-8" />
-                <th className="px-3 py-3 min-w-8 sticky right-0" style={{ backgroundColor: 'var(--alt-row)' }} />
+                {canEdit && <th className="px-3 py-3 min-w-8 sticky right-0" style={{ backgroundColor: 'var(--alt-row)' }} />}
               </tr>
             </thead>
             <tbody>
@@ -487,19 +501,21 @@ export default function ForecastPage() {
                     {cols.map(c => (
                       <td key={`${c.year}-${c.month}`} className="px-1 py-2" style={{ backgroundColor: bg }}>
                         {c.year === row.year
-                          ? <EditableCell value={Number(row[c.key] || 0)} onSave={qty => handleCellSave(row, c, qty)} />
+                          ? <EditableCell value={Number(row[c.key] || 0)} onSave={qty => handleCellSave(row, c, qty)} readOnly={!canEdit} />
                           : <span className="block text-right" style={{ color: 'var(--text-muted)' }}>—</span>
                         }
                       </td>
                     ))}
                     <td className="px-3 py-2 text-right font-semibold sticky right-16 border-l" style={{ color: 'var(--text-main)', backgroundColor: bg, borderColor: 'var(--border)' }}>{fmt(rowTotQty)}</td>
                     <td className="px-3 py-2 text-right font-semibold sticky right-8" style={{ color: 'var(--text-main)', backgroundColor: bg }}>{fmtEur(rowTotRev)}</td>
-                    <td className="px-3 py-2 sticky right-0" style={{ backgroundColor: bg }}>
-                      <button onClick={() => handleDelete(row)} className="p-1 rounded transition-colors" style={{ color: 'var(--text-muted)' }}
-                        onMouseEnter={e => { e.currentTarget.style.color = '#dc2626'; e.currentTarget.style.backgroundColor = '#fee2e2' }}
-                        onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
-                        title="Elimina"><Trash2 size={13} /></button>
-                    </td>
+                    {canEdit && (
+                      <td className="px-3 py-2 sticky right-0" style={{ backgroundColor: bg }}>
+                        <button onClick={() => handleDelete(row)} className="p-1 rounded transition-colors" style={{ color: 'var(--text-muted)' }}
+                          onMouseEnter={e => { e.currentTarget.style.color = '#dc2626'; e.currentTarget.style.backgroundColor = '#fee2e2' }}
+                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}
+                          title="Elimina"><Trash2 size={13} /></button>
+                      </td>
+                    )}
                   </tr>
                 )
               })}

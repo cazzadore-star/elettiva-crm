@@ -5,6 +5,7 @@ import { useCustomers } from '../hooks/useCustomers'
 import { useSettings } from '../hooks/useSettings'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
+import { useCanEdit } from '../hooks/useUserRole'
 
 const FREQUENCY_LABELS = {
   monthly:       'Mensile',
@@ -237,6 +238,7 @@ export default function RotationsPage() {
   const createRotation = useCreateRotation()
   const updateRotation = useUpdateRotation()
   const deleteRotation = useDeleteRotation()
+  const canEdit = useCanEdit()
 
   const filtered = rotations.filter(r => !filterCustomer || String(r.customer_id) === filterCustomer)
 
@@ -256,9 +258,11 @@ export default function RotationsPage() {
         title="Rotazioni"
         description="Previsioni di ordine periodiche per cliente e prodotti"
         action={
-          <button className="btn-primary" onClick={() => setModal({ mode: 'new', data: null })}>
-            <Plus size={16} /> Nuova rotazione
-          </button>
+          canEdit ? (
+            <button className="btn-primary" onClick={() => setModal({ mode: 'new', data: null })}>
+              <Plus size={16} /> Nuova rotazione
+            </button>
+          ) : null
         }
       />
 
@@ -282,9 +286,11 @@ export default function RotationsPage() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-sm gap-2" style={{ color: 'var(--text-muted)' }}>
             <span>Nessuna rotazione trovata.</span>
-            <button className="btn-primary mt-2" onClick={() => setModal({ mode: 'new', data: null })}>
-              <Plus size={15} /> Crea la prima rotazione
-            </button>
+            {canEdit && (
+              <button className="btn-primary mt-2" onClick={() => setModal({ mode: 'new', data: null })}>
+                <Plus size={15} /> Crea la prima rotazione
+              </button>
+            )}
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -297,7 +303,7 @@ export default function RotationsPage() {
                 <th className="text-right px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Rot.</th>
                 <th className="text-right px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Pz/periodo</th>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Prodotti</th>
-                <th className="px-4 py-3" />
+                {canEdit && <th className="px-4 py-3" />}
               </tr>
             </thead>
             <tbody>
@@ -327,22 +333,24 @@ export default function RotationsPage() {
                       <span className="font-medium" style={{ color: 'var(--text-main)' }}>{rotation.product_count}</span> prodotti
                       {rotation.notes && <div className="mt-0.5 italic" style={{ color: 'var(--text-muted)' }}>{rotation.notes}</div>}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        {[
-                          { icon: Pencil, title: 'Modifica', action: () => setModal({ mode: 'edit', data: rotation }) },
-                          { icon: Copy,   title: 'Duplica',  action: () => setModal({ mode: 'duplicate', data: rotation }) },
-                          { icon: Trash2, title: 'Elimina',  action: () => handleDelete(rotation), red: true },
-                        ].map(({ icon: Icon, title, action, red }) => (
-                          <button key={title} onClick={action} title={title}
-                            className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}
-                            onMouseEnter={e => { e.currentTarget.style.color = red ? '#dc2626' : 'var(--brand)'; e.currentTarget.style.backgroundColor = red ? '#fee2e2' : 'var(--brand-50)' }}
-                            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}>
-                            <Icon size={14} />
-                          </button>
-                        ))}
-                      </div>
-                    </td>
+                    {canEdit && (
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          {[
+                            { icon: Pencil, title: 'Modifica', action: () => setModal({ mode: 'edit', data: rotation }) },
+                            { icon: Copy,   title: 'Duplica',  action: () => setModal({ mode: 'duplicate', data: rotation }) },
+                            { icon: Trash2, title: 'Elimina',  action: () => handleDelete(rotation), red: true },
+                          ].map(({ icon: Icon, title, action, red }) => (
+                            <button key={title} onClick={action} title={title}
+                              className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}
+                              onMouseEnter={e => { e.currentTarget.style.color = red ? '#dc2626' : 'var(--brand)'; e.currentTarget.style.backgroundColor = red ? '#fee2e2' : 'var(--brand-50)' }}
+                              onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent' }}>
+                              <Icon size={14} />
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 )
               })}
