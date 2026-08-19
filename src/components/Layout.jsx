@@ -65,7 +65,7 @@ export default function Layout() {
         </nav>
 
         {/* Bottom: theme toggle + user + logout */}
-        <div className="border-t px-3 py-3 space-y-1" style={{ borderColor: 'var(--border)' }}>
+        <div className="border-t px-3 py-3 space-y-2" style={{ borderColor: 'var(--border)' }}>
           {/* Theme toggle */}
           <button
             onClick={toggleTheme}
@@ -76,8 +76,22 @@ export default function Layout() {
             {theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
           </button>
 
-          <p className="text-xs truncate px-1" style={{ color: 'var(--text-muted)' }}>{user?.email}</p>
-          <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>Sviluppo Cazzadore Vittorio<br/>versione 1.7.0</p>
+          <div className="px-1 pt-1 space-y-1.5">
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Sei loggato con:</p>
+              <p className="text-xs truncate font-medium" style={{ color: 'var(--text-sub)' }}>{user?.email}</p>
+            </div>
+            <div>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Tipologia utente:</p>
+              <p className="text-xs font-medium" style={{ color: 'var(--text-sub)' }}>
+                {isAdmin ? 'Amministratore' : isVisitor ? 'Visitatore' : 'Operatore'}
+              </p>
+            </div>
+            <div className="pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+              <p className="text-xs pt-1" style={{ color: 'var(--text-muted)' }}>Sviluppo Cazzadore Vittorio</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Versione 1.7.0</p>
+            </div>
+          </div>
 
           <button
             onClick={handleLogout}
