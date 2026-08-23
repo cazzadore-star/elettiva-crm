@@ -6,7 +6,7 @@ import PageHeader from '../components/ui/PageHeader'
 const CHANGELOG = [
   {
     version: 'v1.8.0',
-    date: '2026-08-19',
+    date: '2026-08-23',
     items: [
       'Introdotta la gestione multi-brand: il sistema ora supporta più brand oltre a Monday (es. 7Days, Daisy…)',
       'Nuovo selettore "Brand attivo" sotto il logo in sidebar, salvato per browser: ogni utente può lavorare su un brand diverso senza interferire con gli altri',
