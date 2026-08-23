@@ -5,6 +5,18 @@ import PageHeader from '../components/ui/PageHeader'
 // ============================================================
 const CHANGELOG = [
   {
+    version: 'v1.8.0',
+    date: '2026-08-19',
+    items: [
+      'Introdotta la gestione multi-brand: il sistema ora supporta più brand oltre a Monday (es. 7Days, Daisy…)',
+      'Nuovo selettore "Brand attivo" sotto il logo in sidebar, salvato per browser: ogni utente può lavorare su un brand diverso senza interferire con gli altri',
+      'Aggiunto il campo Brand ai prodotti, obbligatorio in creazione e modifica',
+      'La pagina Prodotti mostra tutti i brand con filtro dedicato; tutte le altre pagine (Forecast, Report, Rotazioni, Listini medi, Dashboard) si filtrano automaticamente sul brand attivo selezionato',
+      'Nuova sezione "Brand" in Impostazioni per creare nuovi brand',
+      'Il cambio del brand attivo ricarica automaticamente la pagina per aggiornare tutti i dati',
+    ],
+  },
+  {
     version: 'v1.7.0',
     date: '2026-08-19',
     items: [

@@ -10,6 +10,7 @@ import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 import { useForecastPivotAll, useCreateForecastHeader, useUpdateForecastLine, useDeleteForecastHeader, useRecalcForecastFromRotations } from '../hooks/useForecast'
 import { useCanEdit } from '../hooks/useUserRole'
+import { useActiveBrand } from '../hooks/useActiveBrand'
 
 const MONTH_KEYS   = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
 const MONTHS_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
@@ -319,11 +320,18 @@ export default function ForecastPage() {
   const recalc                         = useRecalcForecastFromRotations()
   const createArchive                  = useCreateArchive()
   const canEdit                        = useCanEdit()
+  const { activeBrandId }              = useActiveBrand()
+
+  // Righe filtrate sul brand attivo (base per tutti gli altri filtri e per le liste opzioni)
+  const brandRows = useMemo(
+    () => activeBrandId ? rows.filter(r => r.brand_id === activeBrandId) : rows,
+    [rows, activeBrandId]
+  )
 
   const cols = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth), [startYear, startMonth, endYear, endMonth])
 
-  const allCustomerNames  = useMemo(() => [...new Set(rows.map(r => r.company_name))].sort(), [rows])
-  const allProductNames   = useMemo(() => [...new Set(rows.map(r => r.product_description))].sort(), [rows])
+  const allCustomerNames  = useMemo(() => [...new Set(brandRows.map(r => r.company_name))].sort(), [brandRows])
+  const allProductNames   = useMemo(() => [...new Set(brandRows.map(r => r.product_description))].sort(), [brandRows])
   const allCategoryNames  = useMemo(() => categories.map(c => c.name), [categories])
 
   function handleSort(col) {
@@ -339,7 +347,7 @@ export default function ForecastPage() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
-    return rows.filter(r => {
+    return brandRows.filter(r => {
       if (filterCustomers.length  > 0 && !filterCustomers.includes(r.company_name))         return false
       if (filterProducts.length   > 0 && !filterProducts.includes(r.product_description))   return false
       if (filterCategories.length > 0) {
@@ -358,7 +366,7 @@ export default function ForecastPage() {
       }
       return true
     })
-  }, [rows, search, filterCustomers, filterProducts, filterCategories, categories, rotationProductIds, rotations, filterRotation])
+  }, [brandRows, search, filterCustomers, filterProducts, filterCategories, categories, rotationProductIds, rotations, filterRotation])
 
   const sorted = useMemo(() => sortRows(filtered, sortCol, sortDir), [filtered, sortCol, sortDir])
 

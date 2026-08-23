@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Plus, Trash2, Copy, Pencil } from 'lucide-react'
 import { useRotations, useProductsWithRotationInfo, useCreateRotation, useUpdateRotation, useDeleteRotation } from '../hooks/useRotations'
 import { useCustomers } from '../hooks/useCustomers'
@@ -6,6 +6,7 @@ import { useSettings } from '../hooks/useSettings'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 import { useCanEdit } from '../hooks/useUserRole'
+import { useActiveBrand } from '../hooks/useActiveBrand'
 
 const FREQUENCY_LABELS = {
   monthly:       'Mensile',
@@ -61,8 +62,14 @@ function RotationModal({ mode, initialData, onClose, onSave }) {
   const [productSearch, setProductSearch] = useState('')
 
   const { data: products = [] } = useProductsWithRotationInfo(form.customer_id)
+  const { activeBrandId } = useActiveBrand()
 
-  const filteredProducts = products.filter(p => {
+  const brandProducts = useMemo(
+    () => activeBrandId ? products.filter(p => p.brand_id === activeBrandId) : products,
+    [products, activeBrandId]
+  )
+
+  const filteredProducts = brandProducts.filter(p => {
     if (!productSearch) return true
     const q = productSearch.toLowerCase()
     return p.description.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q) || p.ean.includes(q)

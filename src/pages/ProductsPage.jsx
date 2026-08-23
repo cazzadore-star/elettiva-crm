@@ -2,16 +2,18 @@ import { useState } from 'react'
 import { Plus, Search, Pencil, PowerOff, Power } from 'lucide-react'
 import { useProducts, useUpsertProduct, useToggleProductActive } from '../hooks/useProducts'
 import { useCategories, useAddCategory } from '../hooks/useCategories'
+import { useBrands } from '../hooks/useActiveBrand'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 import { useCanEdit } from '../hooks/useUserRole'
 
-const EMPTY_FORM = { ean: '', sku: '', description: '', description_report: '', category_id: '' }
+const EMPTY_FORM = { ean: '', sku: '', description: '', description_report: '', category_id: '', brand_id: '' }
 
 export default function ProductsPage() {
   const [search, setSearch]                 = useState('')
   const [showInactive, setShowInactive]     = useState(false)
   const [filterCategory, setFilterCategory] = useState('')
+  const [filterBrand, setFilterBrand]       = useState('')
   const [modalOpen, setModalOpen]           = useState(false)
   const [form, setForm]                     = useState(EMPTY_FORM)
   const [formError, setFormError]           = useState('')
@@ -20,6 +22,7 @@ export default function ProductsPage() {
 
   const { data: products = [], isLoading } = useProducts({ includeInactive: showInactive })
   const { data: categories = [] }          = useCategories()
+  const { data: brands = [] }              = useBrands()
   const upsert = useUpsertProduct()
   const toggle = useToggleProductActive()
   const addCat = useAddCategory()
@@ -29,7 +32,8 @@ export default function ProductsPage() {
     const q = search.toLowerCase()
     const matchSearch = p.description.toLowerCase().includes(q) || p.ean.includes(q) || (p.sku || '').toLowerCase().includes(q)
     const matchCat    = !filterCategory || String(p.category_id) === filterCategory
-    return matchSearch && matchCat
+    const matchBrand  = !filterBrand || String(p.brand_id) === filterBrand
+    return matchSearch && matchCat && matchBrand
   })
 
   function openNew() {
@@ -49,6 +53,7 @@ export default function ProductsPage() {
       description_report: product.description_report || '',
       active:             product.active,
       category_id:        product.category_id ? String(product.category_id) : '',
+      brand_id:           product.brand_id ? String(product.brand_id) : '',
     })
     setFormError('')
     setNewCatName('')
@@ -73,10 +78,12 @@ export default function ProductsPage() {
     setFormError('')
     if (!form.ean.trim())         return setFormError('EAN obbligatorio.')
     if (!form.description.trim()) return setFormError('Descrizione Forecast obbligatoria.')
+    if (!form.brand_id)           return setFormError('Seleziona un brand.')
     try {
       await upsert.mutateAsync({
         ...form,
         category_id: form.category_id ? Number(form.category_id) : null,
+        brand_id:    Number(form.brand_id),
       })
       setModalOpen(false)
     } catch (err) {
@@ -89,10 +96,10 @@ export default function ProductsPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <PageHeader
         title="Prodotti"
-        description="Gestione anagrafica prodotti"
+        description="Gestione anagrafica prodotti — tutti i brand"
         action={
           canEdit ? (
             <button className="btn-primary" onClick={openNew}>
@@ -113,6 +120,10 @@ export default function ProductsPage() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+        <select className="input max-w-48" value={filterBrand} onChange={e => setFilterBrand(e.target.value)}>
+          <option value="">Tutti i brand</option>
+          {brands.map(b => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+        </select>
         <select className="input max-w-48" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
           <option value="">Tutte le categorie</option>
           {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
@@ -135,7 +146,7 @@ export default function ProductsPage() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-sm gap-2" style={{ color: 'var(--text-muted)' }}>
             <span>Nessun prodotto trovato.</span>
-            {!search && !filterCategory && canEdit && (
+            {!search && !filterCategory && !filterBrand && canEdit && (
               <button className="btn-primary mt-2" onClick={openNew}>
                 <Plus size={15} /> Aggiungi il primo prodotto
               </button>
@@ -149,6 +160,7 @@ export default function ProductsPage() {
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>SKU</th>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Desc. Forecast</th>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Desc. Report</th>
+                <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Brand</th>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Categoria</th>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Stato</th>
                 {canEdit && <th className="px-4 py-3" />}
@@ -157,6 +169,7 @@ export default function ProductsPage() {
             <tbody>
               {filtered.map((product, idx) => {
                 const bg = idx % 2 === 1 ? 'var(--alt-row)' : 'var(--bg-card)'
+                const brandName = brands.find(b => b.id === product.brand_id)?.name
                 return (
                   <tr
                     key={product.id}
@@ -168,6 +181,12 @@ export default function ProductsPage() {
                     <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--text-sub)' }}>{product.sku || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                     <td className="px-4 py-3" style={{ color: 'var(--text-main)' }}>{product.description}</td>
                     <td className="px-4 py-3" style={{ color: 'var(--text-sub)' }}>{product.description_report || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                    <td className="px-4 py-3">
+                      {brandName
+                        ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700">{brandName}</span>
+                        : <span style={{ color: 'var(--text-muted)' }} className="text-xs">—</span>
+                      }
+                    </td>
                     <td className="px-4 py-3">
                       {product.product_categories?.name
                         ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: 'var(--brand-50)', color: 'var(--brand)' }}>{product.product_categories.name}</span>
@@ -231,6 +250,14 @@ export default function ProductsPage() {
                 <input className="input" placeholder="es. ALF-250" value={form.sku}
                   onChange={e => setForm(f => ({ ...f, sku: e.target.value.trim() }))} />
               </div>
+            </div>
+
+            <div>
+              <label className="label">Brand</label>
+              <select className="input" value={form.brand_id} onChange={e => setForm(f => ({ ...f, brand_id: e.target.value }))}>
+                <option value="">— Seleziona brand —</option>
+                {brands.map(b => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+              </select>
             </div>
 
             <div>

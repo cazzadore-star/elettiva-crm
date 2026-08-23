@@ -6,6 +6,7 @@ import { useProducts } from '../hooks/useProducts'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 import { useCanEdit } from '../hooks/useUserRole'
+import { useActiveBrand } from '../hooks/useActiveBrand'
 
 const EMPTY_FORM = { customer_id: '', product_id: '', avg_price: '', selectedProducts: [], productSearch: '' }
 
@@ -31,8 +32,13 @@ export default function PriceListsPage() {
   const toggle     = useTogglePriceListActive()
   const bulkUpdate = useBulkUpdatePriceList()
   const canEdit    = useCanEdit()
+  const { activeBrandId } = useActiveBrand()
 
-  const filtered = priceLists.filter(pl => {
+  // Filtra sul brand attivo
+  const brandPriceLists = activeBrandId ? priceLists.filter(pl => pl.products?.brand_id === activeBrandId) : priceLists
+  const brandProducts   = activeBrandId ? products.filter(p => p.brand_id === activeBrandId) : products
+
+  const filtered = brandPriceLists.filter(pl => {
     const q = search.toLowerCase()
     return (
       pl.customers?.company_name.toLowerCase().includes(q) ||
@@ -194,7 +200,7 @@ export default function PriceListsPage() {
               <div>
                 <label className="label">Prodotto</label>
                 <select className="input" value={form.product_id} disabled>
-                  {products.map(p => <option key={p.id} value={p.id}>{p.description} — {p.ean}</option>)}
+                  {brandProducts.map(p => <option key={p.id} value={p.id}>{p.description} — {p.ean}</option>)}
                 </select>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Cliente e prodotto non modificabili.</p>
               </div>
@@ -212,7 +218,7 @@ export default function PriceListsPage() {
                   <svg className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
                 </div>
                 <div className="rounded-lg max-h-52 overflow-y-auto divide-y" style={{ border: `1px solid var(--border)`, borderColor: 'var(--border)' }}>
-                  {products.filter(p => {
+                  {brandProducts.filter(p => {
                     const q = (form.productSearch || '').toLowerCase()
                     return !q || p.description.toLowerCase().includes(q) || p.ean.includes(q)
                   }).map(p => (
@@ -230,7 +236,7 @@ export default function PriceListsPage() {
                 </div>
                 <div className="flex gap-2 mt-1.5">
                   <button type="button" className="text-xs hover:underline" style={{ color: 'var(--brand)' }}
-                    onClick={() => setForm(f => ({ ...f, selectedProducts: products.map(p => p.id) }))}>Seleziona tutti</button>
+                    onClick={() => setForm(f => ({ ...f, selectedProducts: brandProducts.map(p => p.id) }))}>Seleziona tutti</button>
                   <span style={{ color: 'var(--border)' }}>·</span>
                   <button type="button" className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}
                     onClick={() => setForm(f => ({ ...f, selectedProducts: [] }))}>Deseleziona tutti</button>

@@ -12,7 +12,7 @@ export function usePriceLists({ includeInactive = false } = {}) {
         .select(`
           *,
           customers ( id, company_name ),
-          products  ( id, ean, description )
+          products  ( id, ean, description, brand_id )
         `)
         .order('created_at', { ascending: false })
       if (!includeInactive) q = q.eq('active', true)

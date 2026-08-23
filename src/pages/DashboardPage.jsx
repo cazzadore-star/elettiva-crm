@@ -4,6 +4,7 @@ import { useForecastPivotAll } from '../hooks/useForecast'
 import { useCustomers } from '../hooks/useCustomers'
 import { useRotations } from '../hooks/useRotations'
 import { useCategories } from '../hooks/useCategories'
+import { useActiveBrand } from '../hooks/useActiveBrand'
 
 const CURRENT_YEAR  = new Date().getFullYear()
 const YEARS         = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 1 + i)
@@ -145,6 +146,13 @@ export default function DashboardPage() {
   const { data: customers = [] }       = useCustomers()
   const { data: rotations = [] }       = useRotations()
   const { data: categories = [] }      = useCategories()
+  const { activeBrandId }              = useActiveBrand()
+
+  // Righe filtrate sul brand attivo (base per tutto il resto)
+  const brandRows = useMemo(
+    () => activeBrandId ? rows.filter(r => r.brand_id === activeBrandId) : rows,
+    [rows, activeBrandId]
+  )
 
   // Colonne range corrente e precedente
   const cols     = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth),         [startYear, startMonth, endYear, endMonth])
@@ -157,12 +165,12 @@ export default function DashboardPage() {
   const yearsInRangePrev = useMemo(() => [...new Set(colsPrev.map(c => c.year))], [colsPrev])
 
   // Righe filtrate
-  const filteredRows = useMemo(() => rows.filter(r => {
+  const filteredRows = useMemo(() => brandRows.filter(r => {
     if (filterCustomer && r.company_name        !== filterCustomer) return false
     if (filterProduct  && r.product_description !== filterProduct)  return false
     if (filterCategory && String(r.category_id) !== filterCategory) return false
     return true
-  }), [rows, filterCustomer, filterProduct, filterCategory])
+  }), [brandRows, filterCustomer, filterProduct, filterCategory])
 
   const rangeRows     = useMemo(() => filteredRows.filter(r => yearsInRange.includes(r.year)),     [filteredRows, yearsInRange])
   const rangeRowsPrev = useMemo(() => filteredRows.filter(r => yearsInRangePrev.includes(r.year)), [filteredRows, yearsInRangePrev])
@@ -172,20 +180,21 @@ export default function DashboardPage() {
   const totalQty2 = useMemo(() => rangeRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0), 0), [rangeRows, cols])
 
   // Rotazione media: pezzi filtrati / mesi / PDV rotazioni nel periodo (filtrate per cliente se attivo)
-const rotazioneMediaGlobale = useMemo(() => {
-  const rotsInRange = rotations.filter(rot => {
-    const rotStart   = new Date(rot.period_start)
-    const rotEnd     = new Date(rot.period_end)
-    const rangeStart = new Date(startYear, startMonth - 1, 1)
-    const rangeEnd   = new Date(endYear, endMonth - 1, 31)
-    if (rotEnd < rangeStart || rotStart > rangeEnd) return false
-    if (filterCustomer && rot.company_name !== filterCustomer) return false
-    return true
-  })
-  if (rotsInRange.length === 0) return 0
-  const avg = rotsInRange.reduce((s, r) => s + Number(r.rotation_value || 0), 0) / rotsInRange.length
-  return avg
-}, [rotations, startYear, startMonth, endYear, endMonth, filterCustomer])
+  const rotazioneMediaGlobale = useMemo(() => {
+    if (numMonths === 0 || totalQty2 === 0) return 0
+    let totalPdv = 0
+    for (const rot of rotations) {
+      const rotStart   = new Date(rot.period_start)
+      const rotEnd     = new Date(rot.period_end)
+      const rangeStart = new Date(startYear, startMonth - 1, 1)
+      const rangeEnd   = new Date(endYear, endMonth - 1, 31)
+      if (rotEnd < rangeStart || rotStart > rangeEnd) continue
+      if (filterCustomer && rot.company_name !== filterCustomer) continue
+      totalPdv += rot.num_points
+    }
+    if (totalPdv === 0) return 0
+    return totalQty2 / numMonths / totalPdv
+  }, [totalQty2, numMonths, rotations, startYear, startMonth, endYear, endMonth, filterCustomer])
 
   const today    = new Date()
   const in60days = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000)
@@ -233,8 +242,8 @@ const rotazioneMediaGlobale = useMemo(() => {
   const prevLabel  = `${MONTHS_SHORT[startMonth-1]} ${startYear-1} → ${MONTHS_SHORT[endMonth-1]} ${endYear-1}`
   const hasFilters = filterCustomer || filterCategory || filterProduct
 
-  const uniqueProducts  = useMemo(() => [...new Set(rows.map(r => r.product_description))].sort(), [rows])
-  const uniqueCustomers = useMemo(() => [...new Set(rows.map(r => r.company_name))].sort(), [rows])
+  const uniqueProducts  = useMemo(() => [...new Set(brandRows.map(r => r.product_description))].sort(), [brandRows])
+  const uniqueCustomers = useMemo(() => [...new Set(brandRows.map(r => r.company_name))].sort(), [brandRows])
 
   return (
     <div className="max-w-7xl mx-auto">

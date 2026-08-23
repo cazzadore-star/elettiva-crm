@@ -2,10 +2,11 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useTheme } from '../hooks/useTheme'
 import { useIsAdmin, useIsVisitor } from '../hooks/useUserRole'
+import { useActiveBrand } from '../hooks/useActiveBrand'
 import {
   LayoutDashboard, Package, Users, Tag,
   BarChart2, FileText, LogOut, Zap,
-  RefreshCw, Archive, Settings, Sun, Moon, ClipboardList, History
+  RefreshCw, Archive, Settings, Sun, Moon, ClipboardList, History, ChevronDown
 } from 'lucide-react'
 
 export default function Layout() {
@@ -14,6 +15,7 @@ export default function Layout() {
   const isAdmin                = useIsAdmin()
   const isVisitor               = useIsVisitor()
   const navigate               = useNavigate()
+  const { activeBrandId, setActiveBrandId, brands } = useActiveBrand()
 
   const NAV = [
     { to: '/dashboard',  label: 'Dashboard',    icon: LayoutDashboard },
@@ -44,6 +46,22 @@ export default function Layout() {
             <Zap size={15} className="text-white" />
           </div>
           <span className="font-semibold text-sm" style={{ color: 'var(--text-main)' }}>Elettiva CRM</span>
+        </div>
+
+        {/* Brand attivo */}
+        <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+          <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Brand attivo</p>
+          <div className="relative">
+            <select
+              value={activeBrandId || ''}
+              onChange={e => { setActiveBrandId(Number(e.target.value)); window.location.reload() }}
+              className="input text-sm font-medium appearance-none pr-8 cursor-pointer"
+              style={{ color: 'var(--brand)', borderColor: 'var(--brand)', backgroundColor: 'var(--brand-50)' }}
+            >
+              {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--brand)' }} />
+          </div>
         </div>
 
         {/* Nav */}
@@ -89,7 +107,7 @@ export default function Layout() {
             </div>
             <div className="pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
               <p className="text-xs pt-1" style={{ color: 'var(--text-muted)' }}>Sviluppo Cazzadore Vittorio</p>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Versione 1.7.0</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Versione 1.8.0</p>
             </div>
           </div>
 

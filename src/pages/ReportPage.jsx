@@ -3,6 +3,7 @@ import { Download, RefreshCw, AlertTriangle, GripVertical, Search, Users, X } fr
 import { useReportPivot, useReportPivotByCustomer, usePopulateReportFromForecast, useUpsertReportLine } from '../hooks/useReport'
 import { useCategories, useUpdateCategoriesOrder } from '../hooks/useCategories'
 import { useCanEdit } from '../hooks/useUserRole'
+import { useActiveBrand } from '../hooks/useActiveBrand'
 import PageHeader from '../components/ui/PageHeader'
 
 const CURRENT_YEAR  = new Date().getFullYear()
@@ -192,13 +193,18 @@ export default function ReportPage() {
   const [showCustomerModal, setShowCustomerModal] = useState(false)
   const [selectedCustomers, setSelectedCustomers] = useState([]) // vuoto = tutti
 
-  const { data: rowsAll = [] }              = useReportPivot()
-  const { data: rowsByCustomer = [], isLoading } = useReportPivotByCustomer()
+  const { data: rowsAllRaw = [] }              = useReportPivot()
+  const { data: rowsByCustomerRaw = [], isLoading } = useReportPivotByCustomer()
   const { data: categories = [] }           = useCategories()
   const populate       = usePopulateReportFromForecast()
   const upsertLine     = useUpsertReportLine()
   const updateCatOrder = useUpdateCategoriesOrder()
   const canEdit        = useCanEdit()
+  const { activeBrandId } = useActiveBrand()
+
+  // Filtra sul brand attivo
+  const rowsAll        = useMemo(() => activeBrandId ? rowsAllRaw.filter(r => r.brand_id === activeBrandId) : rowsAllRaw, [rowsAllRaw, activeBrandId])
+  const rowsByCustomer = useMemo(() => activeBrandId ? rowsByCustomerRaw.filter(r => r.brand_id === activeBrandId) : rowsByCustomerRaw, [rowsByCustomerRaw, activeBrandId])
 
   const hasCustomerFilter = selectedCustomers.length > 0
   // Se filtro cliente attivo, ricostruisce le righe aggregate solo sui clienti selezionati

@@ -25,7 +25,7 @@ export function useProductsWithRotationInfo(customerId) {
     queryFn: async () => {
       const { data: products, error } = await supabase
         .from('products')
-        .select('id, ean, description, sku')
+        .select('id, ean, description, sku, brand_id')
         .eq('active', true)
         .order('description')
       if (error) throw error
@@ -88,11 +88,10 @@ export function useCreateRotation() {
 
       return rot
     },
-   onSuccess: () => {
-  qc.invalidateQueries({ queryKey: [KEY] })
-  qc.invalidateQueries({ queryKey: ['products_rotation_info'] })
-  qc.invalidateQueries({ queryKey: ['forecast'] })
-},
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [KEY] })
+      qc.invalidateQueries({ queryKey: ['forecast'] })
+    },
   })
 }
 
@@ -133,10 +132,9 @@ export function useUpdateRotation() {
         .rpc('apply_rotation_to_forecast', { p_rotation_id: id })
       if (applyError) throw applyError
     },
-   onSuccess: () => {
-  qc.invalidateQueries({ queryKey: [KEY] })
-  qc.invalidateQueries({ queryKey: ['products_rotation_info'] })
-  qc.invalidateQueries({ queryKey: ['forecast'] })
-},
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [KEY] })
+      qc.invalidateQueries({ queryKey: ['forecast'] })
+    },
   })
 }

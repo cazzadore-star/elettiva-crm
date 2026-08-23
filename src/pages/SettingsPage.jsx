@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Save } from 'lucide-react'
+import { Save, Plus } from 'lucide-react'
 import { useSettings, useUpdateSettings } from '../hooks/useSettings'
 import { useCategories, useToggleCategoryReportExclusion } from '../hooks/useCategories'
+import { useBrands } from '../hooks/useActiveBrand'
+import { useAddBrand } from '../hooks/useBrandsAdmin'
 import PageHeader from '../components/ui/PageHeader'
 
 export default function SettingsPage() {
@@ -10,6 +12,12 @@ export default function SettingsPage() {
 
   const { data: categories = [] } = useCategories()
   const toggleExclusion = useToggleCategoryReportExclusion()
+
+  const { data: brands = [] } = useBrands()
+  const addBrand = useAddBrand()
+  const [newBrandName, setNewBrandName] = useState('')
+  const [addingBrand, setAddingBrand] = useState(false)
+  const [brandError, setBrandError] = useState('')
 
   const [form, setForm] = useState({ period_start: '', period_end: '', default_rotation: '' })
   const [saved, setSaved] = useState(false)
@@ -33,6 +41,18 @@ export default function SettingsPage() {
       setTimeout(() => setSaved(false), 3000)
     } catch {
       setError('Errore nel salvataggio. Riprova.')
+    }
+  }
+
+  async function handleAddBrand() {
+    setBrandError('')
+    if (!newBrandName.trim()) return setBrandError('Inserisci un nome per il brand.')
+    try {
+      await addBrand.mutateAsync(newBrandName)
+      setNewBrandName('')
+      setAddingBrand(false)
+    } catch (err) {
+      setBrandError(err.message?.includes('duplicate') ? 'Esiste già un brand con questo nome.' : 'Errore nel salvataggio. Riprova.')
     }
   }
 
@@ -130,6 +150,51 @@ export default function SettingsPage() {
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessuna categoria disponibile.</p>
           )}
         </div>
+      </div>
+
+      {/* Gestione Brand */}
+      <div className="card p-6 mt-4">
+        <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-main)' }}>Brand</h2>
+        <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+          Elenco dei brand disponibili nel sistema. Per lavorare su un brand specifico usa il selettore in cima alla sidebar.
+        </p>
+        <div className="space-y-1 mb-3">
+          {brands.map(brand => (
+            <div key={brand.id} className="flex items-center px-3 py-2 rounded-lg"
+              style={{ backgroundColor: 'var(--alt-row)' }}>
+              <span className="text-sm" style={{ color: 'var(--text-main)' }}>{brand.name}</span>
+            </div>
+          ))}
+          {brands.length === 0 && (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessun brand disponibile.</p>
+          )}
+        </div>
+
+        {!addingBrand ? (
+          <button type="button" className="btn-secondary text-sm" onClick={() => { setAddingBrand(true); setBrandError('') }}>
+            <Plus size={14} /> Nuovo brand
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <input
+                className="input flex-1"
+                placeholder="Nome nuovo brand"
+                value={newBrandName}
+                onChange={e => setNewBrandName(e.target.value)}
+                autoFocus
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddBrand() } }}
+              />
+              <button type="button" className="btn-primary text-sm px-3" onClick={handleAddBrand} disabled={addBrand.isPending}>
+                {addBrand.isPending ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Aggiungi'}
+              </button>
+              <button type="button" className="btn-secondary text-sm px-3" onClick={() => { setAddingBrand(false); setNewBrandName(''); setBrandError('') }}>
+                Annulla
+              </button>
+            </div>
+            {brandError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{brandError}</p>}
+          </div>
+        )}
       </div>
     </div>
   )

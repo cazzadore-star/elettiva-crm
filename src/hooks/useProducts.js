@@ -30,6 +30,7 @@ export function useUpsertProduct() {
         description_report: product.description_report || null,
         active:             product.active ?? true,
         category_id:        product.category_id || null,
+        brand_id:           product.brand_id || null,
       }
       const { data, error } = product.id
         ? await supabase.from('products').update(payload).eq('id', product.id).select().single()
