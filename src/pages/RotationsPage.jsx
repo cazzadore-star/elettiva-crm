@@ -7,6 +7,7 @@ import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 import { useCanEdit } from '../hooks/useUserRole'
 import { useActiveBrand } from '../hooks/useActiveBrand'
+import { useProducts } from '../hooks/useProducts'
 
 const FREQUENCY_LABELS = {
   monthly:       'Mensile',
@@ -242,12 +243,29 @@ export default function RotationsPage() {
 
   const { data: rotations = [], isLoading } = useRotations()
   const { data: customers = [] }            = useCustomers()
+  const { data: allProducts = [] }          = useProducts()
   const createRotation = useCreateRotation()
   const updateRotation = useUpdateRotation()
   const deleteRotation = useDeleteRotation()
   const canEdit = useCanEdit()
+  const { activeBrandId } = useActiveBrand()
 
-  const filtered = rotations.filter(r => !filterCustomer || String(r.customer_id) === filterCustomer)
+  // Mappa product_id -> brand_id per filtrare le rotazioni sul brand attivo
+  const productBrandMap = useMemo(() => {
+    const map = {}
+    for (const p of allProducts) map[p.id] = p.brand_id
+    return map
+  }, [allProducts])
+
+  // Rotazioni che includono almeno un prodotto del brand attivo
+  const brandRotations = useMemo(() => {
+    if (!activeBrandId) return rotations
+    return rotations.filter(r =>
+      r.products?.some(rp => productBrandMap[rp.product_id] === activeBrandId)
+    )
+  }, [rotations, activeBrandId, productBrandMap])
+
+  const filtered = brandRotations.filter(r => !filterCustomer || String(r.customer_id) === filterCustomer)
 
   async function handleSave({ id, rotation, productIds }) {
     if (id) await updateRotation.mutateAsync({ id, rotation, productIds })
