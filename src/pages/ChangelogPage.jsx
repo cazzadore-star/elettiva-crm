@@ -5,6 +5,16 @@ import PageHeader from '../components/ui/PageHeader'
 // ============================================================
 const CHANGELOG = [
   {
+    version: 'v1.9.0',
+    date: '2026-09-08',
+    items: [
+      'Corretto un bug per cui l\'importazione "da Forecast a Report" considerava solo l\'anno corrente, escludendo dati di rotazioni inserite su anni futuri (es. 2027)',
+      'L\'importazione nel Report ora ricostruisce i dati per tutti gli anni presenti nel Forecast in un\'unica operazione',
+      'Nel Forecast, le righe prodotto senza alcun valore nel periodo attualmente selezionato non vengono più mostrate vuote in tabella',
+      'Generato un documento tecnico descrittivo del software a supporto di valutazioni di finanza agevolata',
+    ],
+  },
+  {
     version: 'v1.8.0',
     date: '2026-08-23',
     items: [

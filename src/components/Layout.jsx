@@ -107,7 +107,7 @@ export default function Layout() {
             </div>
             <div className="pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
               <p className="text-xs pt-1" style={{ color: 'var(--text-muted)' }}>Sviluppo Cazzadore Vittorio</p>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Versione 1.8.0</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Versione 1.9.0</p>
             </div>
           </div>
 
