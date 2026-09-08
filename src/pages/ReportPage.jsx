@@ -275,8 +275,8 @@ export default function ReportPage() {
   }
 
   async function handlePopulate() {
-    if (!confirm('Importa i valori dal Forecast nel Report?\n\nTutti i valori esistenti per l\'anno verranno sovrascritti.')) return
-    await populate.mutateAsync(CURRENT_YEAR)
+    if (!confirm('Importa tutti i dati dal Forecast nel Report?\n\nTutti i valori esistenti nel Report (tutti gli anni) verranno sovrascritti con i dati aggiornati dal Forecast.')) return
+    await populate.mutateAsync()
   }
 
   async function handleExport() {

@@ -345,9 +345,12 @@ export default function ForecastPage() {
     return rot ? new Set(rot.products.map(p => p.product_id)) : null
   }, [filterRotation, rotations])
 
+  const yearsInCols = useMemo(() => new Set(cols.map(c => c.year)), [cols])
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     return brandRows.filter(r => {
+      if (!yearsInCols.has(r.year)) return false
       if (filterCustomers.length  > 0 && !filterCustomers.includes(r.company_name))         return false
       if (filterProducts.length   > 0 && !filterProducts.includes(r.product_description))   return false
       if (filterCategories.length > 0) {
@@ -366,7 +369,7 @@ export default function ForecastPage() {
       }
       return true
     })
-  }, [brandRows, search, filterCustomers, filterProducts, filterCategories, categories, rotationProductIds, rotations, filterRotation])
+  }, [brandRows, search, filterCustomers, filterProducts, filterCategories, categories, rotationProductIds, rotations, filterRotation, yearsInCols])
 
   const sorted = useMemo(() => sortRows(filtered, sortCol, sortDir), [filtered, sortCol, sortDir])
 

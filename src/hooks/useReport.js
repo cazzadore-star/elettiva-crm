@@ -36,8 +36,8 @@ export function useReportPivotByCustomer() {
 export function usePopulateReportFromForecast() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (year) => {
-      const { error } = await supabase.rpc('populate_report_from_forecast', { p_year: year })
+    mutationFn: async () => {
+      const { error } = await supabase.rpc('populate_report_from_forecast_all')
       if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
