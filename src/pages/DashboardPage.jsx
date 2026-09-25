@@ -423,7 +423,7 @@ export default function DashboardPage() {
             </div>
           </div>
           {confrontoTab === 'clienti' ? (
-            <div style={{ maxHeight: '320px', overflowY: 'scroll' }}>
+            <div style={{ maxHeight: '320px', overflowY: 'scroll', paddingRight: '10px' }}>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
@@ -446,7 +446,7 @@ export default function DashboardPage() {
               </table>
             </div>
           ) : (
-            <div style={{ maxHeight: '320px', overflowY: 'scroll' }}>
+            <div style={{ maxHeight: '320px', overflowY: 'scroll', paddingRight: '10px' }}>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
@@ -480,7 +480,7 @@ export default function DashboardPage() {
           {pdvByCustomer.length === 0 ? (
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessuna rotazione attiva nel periodo selezionato.</p>
           ) : (
-            <div style={{ maxHeight: '320px', overflowY: 'scroll' }}>
+            <div style={{ maxHeight: '320px', overflowY: 'scroll', paddingRight: '10px' }}>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
