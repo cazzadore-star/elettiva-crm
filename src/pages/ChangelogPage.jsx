@@ -5,8 +5,15 @@ import PageHeader from '../components/ui/PageHeader'
 // ============================================================
 const CHANGELOG = [
   {
+    version: 'v1.10.0',
+    date: '2026-09-09',
+    items: [
+      'Nuova tabella "Punti vendita per cliente" in Dashboard, accanto al Confronto anno precedente: mostra il numero medio e massimo di punti vendita per cliente calcolato dalle rotazioni attive nel periodo selezionato',
+    ],
+  },
+  {
     version: 'v1.9.0',
-    date: '2026-09-08',
+    date: '2026-09-09',
     items: [
       'Corretto un bug per cui l\'importazione "da Forecast a Report" considerava solo l\'anno corrente, escludendo dati di rotazioni inserite su anni futuri (es. 2027)',
       'L\'importazione nel Report ora ricostruisce i dati per tutti gli anni presenti nel Forecast in un\'unica operazione',
