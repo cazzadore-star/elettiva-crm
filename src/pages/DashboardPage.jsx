@@ -1,595 +1,576 @@
 import { useState, useMemo } from 'react'
-import { Upload, ArrowRight, ArrowLeft, Check, AlertTriangle, Plus } from 'lucide-react'
-import { useCustomers, useUpsertCustomer } from '../hooks/useCustomers'
-import { useProducts, useCreateProductsBulk } from '../hooks/useProducts'
-import { useBrands } from '../hooks/useActiveBrand'
-import { useCustomerMappings, useFinalizeSellinImport } from '../hooks/useSellin'
-import PageHeader from '../components/ui/PageHeader'
-import { useNavigate } from 'react-router-dom'
+import { TrendingUp, Users, Package, X, Store } from 'lucide-react'
+import { useForecastPivotAll } from '../hooks/useForecast'
+import { useCustomers } from '../hooks/useCustomers'
+import { useRotations } from '../hooks/useRotations'
+import { useCategories } from '../hooks/useCategories'
+import { useActiveBrand } from '../hooks/useActiveBrand'
+import { useProducts } from '../hooks/useProducts'
 
-const STEPS = ['Carica file', 'Clienti', 'Prodotti', 'Mesi e punti vendita', 'Conferma']
+const CURRENT_YEAR  = new Date().getFullYear()
+const YEARS         = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 1 + i)
+const MONTH_KEYS    = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+const MONTHS_SHORT  = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
 
-function normalize(s) {
-  return (s || '').toString().trim().toUpperCase().replace(/\s+/g, '')
-}
-
-// Rimuove accenti/punteggiatura e normalizza gli spazi per il confronto "morbido" dei nomi
-function normalizeForMatch(s) {
-  return (s || '')
-    .toString()
-    .toUpperCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^A-Z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-// Cerca, tra i clienti CRM, quello il cui nome è contenuto nel nome esteso del file
-// (es. CRM "IPERAL" dentro file "IPERAL SUPERMERCATI S.p.A. con socio unico").
-// Preferisce il nome CRM più lungo/specifico tra quelli che corrispondono.
-function suggestCustomerMatch(fileName, customers) {
-  const normFile = normalizeForMatch(fileName)
-  if (!normFile) return null
-  let best = null
-  for (const c of customers) {
-    const normCrm = normalizeForMatch(c.company_name)
-    if (normCrm.length < 3) continue
-    if (normFile === normCrm) return c.id
-    const isContained = normFile.startsWith(normCrm + ' ') || normFile.endsWith(' ' + normCrm) || normFile.includes(' ' + normCrm + ' ') || normFile.startsWith(normCrm)
-    if (isContained && (!best || normCrm.length > best.len)) best = { id: c.id, len: normCrm.length }
+function buildMonthRange(startYear, startMonth, endYear, endMonth) {
+  const cols = []
+  let y = startYear, m = startMonth
+  while (y < endYear || (y === endYear && m <= endMonth)) {
+    cols.push({ year: y, month: m, key: MONTH_KEYS[m - 1], label: `${MONTHS_SHORT[m - 1]} ${String(y).slice(2)}` })
+    m++
+    if (m > 12) { m = 1; y++ }
   }
-  return best ? best.id : null
+  return cols
 }
 
-// Deduce il brand a partire dalla descrizione, confrontando con i brand esistenti
-function detectBrand(description, brands) {
-  const normDesc = normalize(description)
-  for (const b of brands) {
-    if (normDesc.startsWith(normalize(b.name))) return b.id
-  }
-  return null
+function fmtEur(n) { return '€ ' + Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+function fmt(n)    { return Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }
+function fmtDec(n) { return Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+
+function DeltaBadge({ curr, prev }) {
+  if (!prev || prev === 0) return <span style={{ color: 'var(--text-muted)' }} className="text-xs">—</span>
+  const d = ((curr - prev) / prev) * 100
+  return (
+    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${d >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+      {d >= 0 ? '+' : ''}{d.toFixed(1)}%
+    </span>
+  )
 }
 
-async function parseExcelFile(file) {
-  const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/xlsx.mjs')
-  const buf = await file.arrayBuffer()
-  const wb = XLSX.read(buf, { type: 'array' })
-  const sheet = wb.Sheets[wb.SheetNames[0]]
-  const raw = XLSX.utils.sheet_to_json(sheet, { defval: '' })
-  return raw
+function KpiCard({ icon: Icon, label, value, sub, color }) {
+  return (
+    <div className="card p-5 flex items-start gap-4">
+      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${color}`}>
+        <Icon size={18} className="text-white" />
+      </div>
+      <div>
+        <p className="text-sm" style={{ color: 'var(--text-sub)' }}>{label}</p>
+        <p className="text-xl font-semibold mt-0.5" style={{ color: 'var(--text-main)' }}>{value}</p>
+        {sub && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{sub}</p>}
+      </div>
+    </div>
+  )
 }
 
-// Legge una colonna anche se il nome nel file ha punteggiatura/spazi leggermente diversi
-// (es. "Rag.Soc." nel file vs "Rag.Soc" nel codice)
-function getCol(row, ...names) {
-  for (const name of names) {
-    if (row[name] !== undefined && row[name] !== '') return row[name]
-  }
-  return ''
+function CustomerModal({ customerName, rows, cols, onClose }) {
+  const customerRows = rows.filter(r => r.company_name === customerName)
+  const totalRevenue = customerRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0), 0)
+  const totalQty     = customerRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0), 0)
+  const monthlyData  = cols.map(c => ({ ...c, rev: customerRows.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0) }))
+  const maxRev       = Math.max(...monthlyData.map(m => m.rev), 1)
+  const byProduct    = customerRows.map(r => {
+    const qty = cols.filter(c => c.year === r.year).reduce((s, c) => s + Number(r[c.key] || 0), 0)
+    return { name: r.product_description, qty, rev: qty * Number(r.avg_price_snapshot || 0) }
+  }).sort((a, b) => b.rev - a.rev)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" style={{ backgroundColor: 'var(--bg-card)' }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <h2 className="font-semibold text-lg" style={{ color: 'var(--text-main)' }}>{customerName}</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              {MONTHS_SHORT[cols[0]?.month - 1]} {cols[0]?.year} → {MONTHS_SHORT[cols[cols.length-1]?.month - 1]} {cols[cols.length-1]?.year}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg" style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--alt-row)'}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
+          <div className="grid grid-cols-3 gap-4">
+            {[{ label: 'Fatturato', value: fmtEur(totalRevenue) }, { label: 'Pezzi', value: fmt(totalQty) }, { label: 'Prodotti', value: byProduct.length }].map(k => (
+              <div key={k.label} className="rounded-lg p-4 border" style={{ backgroundColor: 'var(--alt-row)', borderColor: 'var(--border)' }}>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{k.label}</p>
+                <p className="text-lg font-semibold mt-1" style={{ color: 'var(--text-main)' }}>{k.value}</p>
+              </div>
+            ))}
+          </div>
+          <div>
+            <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>Andamento mensile</h3>
+            <div className="flex items-end gap-1" style={{ height: '140px' }}>
+              {monthlyData.map(m => {
+                const barH = m.rev > 0 ? Math.max((m.rev / maxRev) * 110, 8) : 0
+                return (
+                  <div key={`${m.year}-${m.month}`} className="flex-1 flex flex-col items-center justify-end gap-1">
+                    {m.rev > 0 && <span style={{ fontSize: '7px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{fmtEur(m.rev)}</span>}
+                    <div style={{ height: `${barH}px`, backgroundColor: 'var(--brand)', borderRadius: '3px 3px 0 0', width: '100%' }} />
+                    <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>{m.label}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>Prodotti per fatturato</h3>
+            <div className="space-y-2">
+              {byProduct.map((p, i) => (
+                <div key={p.name} className="flex items-center gap-3">
+                  <span className="text-xs w-5 shrink-0 font-medium" style={{ color: 'var(--text-muted)' }}>{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs truncate" style={{ color: 'var(--text-main)' }}>{p.name}</span>
+                      <div className="flex items-center gap-3 ml-2 shrink-0">
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmt(p.qty)} pz</span>
+                        <span className="text-xs font-medium" style={{ color: 'var(--text-main)' }}>{fmtEur(p.rev)}</span>
+                      </div>
+                    </div>
+                    <div className="h-1 rounded mt-1" style={{ backgroundColor: 'var(--border)' }}>
+                      <div className="h-1 rounded" style={{ backgroundColor: 'var(--brand)', width: `${(p.rev / (byProduct[0]?.rev || 1)) * 100}%` }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
-export default function SellinImportPage() {
-  const navigate = useNavigate()
-  const [step, setStep] = useState(0)
-  const [fileName, setFileName] = useState('')
-  const [parsing, setParsing] = useState(false)
-  const [parseError, setParseError] = useState('')
-  const [rawRows, setRawRows] = useState([])
+export default function DashboardPage() {
+  const [startMonth, setStartMonth]             = useState(1)
+  const [startYear,  setStartYear]              = useState(CURRENT_YEAR)
+  const [endMonth,   setEndMonth]               = useState(12)
+  const [endYear,    setEndYear]                = useState(CURRENT_YEAR)
+  const [filterCustomer,  setFilterCustomer]    = useState('')
+  const [filterCategory,  setFilterCategory]    = useState('')
+  const [filterProduct,   setFilterProduct]     = useState('')
+  const [selectedCustomer, setSelectedCustomer] = useState(null)
+  const [confrontoTab, setConfrontoTab]         = useState('clienti')
 
-  // Step Clienti: { [code]: { name, customerId: '' | number, isNew: bool, newName: '' } }
-  const [customerAssign, setCustomerAssign] = useState({})
-  // Step Prodotti: { [ean]: { sku, description, brandId, existingProductId } }
-  const [productAssign, setProductAssign] = useState({})
-  // Step 4
-  const [importName, setImportName] = useState('')
-  const [numMonths, setNumMonths] = useState('')
-  const [pointsByCustomer, setPointsByCustomer] = useState({}) // { customerId: numPoints }
+  const { data: rows = [], isLoading } = useForecastPivotAll()
+  const { data: customers = [] }       = useCustomers()
+  const { data: rotations = [] }       = useRotations()
+  const { data: categories = [] }      = useCategories()
+  const { data: allProducts = [] }     = useProducts()
+  const { activeBrandId }              = useActiveBrand()
 
-  const [finalizing, setFinalizing] = useState(false)
-  const [finalizeError, setFinalizeError] = useState('')
-
-  const { data: customers = [] }      = useCustomers()
-  const { data: allProducts = [] }    = useProducts()
-  const { data: brands = [] }         = useBrands()
-  const { data: mappings = [] }       = useCustomerMappings()
-  const upsertCustomer                = useUpsertCustomer()
-  const createProductsBulk            = useCreateProductsBulk()
-  const finalizeImport                = useFinalizeSellinImport()
-
-  const mappingByCode = useMemo(() => {
+  // Mappa product_id -> brand_id, per filtrare le rotazioni sul brand attivo
+  const productBrandMap = useMemo(() => {
     const map = {}
-    for (const m of mappings) map[m.gestionale_code] = m
-    return map
-  }, [mappings])
-
-  const productByEan = useMemo(() => {
-    const map = {}
-    for (const p of allProducts) map[p.ean] = p
+    for (const p of allProducts) map[p.id] = p.brand_id
     return map
   }, [allProducts])
 
-  // -------- Step 1: upload + parsing --------
-  async function handleFile(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setFileName(file.name)
-    setParseError('')
-    setParsing(true)
-    try {
-      const raw = await parseExcelFile(file)
-      if (raw.length === 0) throw new Error('Il file non contiene righe.')
+  // Righe filtrate sul brand attivo (base per tutto il resto)
+  const brandRows = useMemo(
+    () => activeBrandId ? rows.filter(r => r.brand_id === activeBrandId) : rows,
+    [rows, activeBrandId]
+  )
 
-      // Normalizza le righe grezze nei campi che ci servono
-      const rows = raw.map(r => ({
-        customerCode: String(getCol(r, 'Cliente')).trim(),
-        customerName: String(getCol(r, 'Rag.Soc.', 'Rag.Soc', 'RagSoc')).trim(),
-        month:        Number(getCol(r, 'Mese')),
-        ean:          String(getCol(r, 'EAN')).trim(),
-        sku:          String(getCol(r, 'Articolo')).trim(),
-        description:  String(getCol(r, 'Descrizione')).trim(),
-        qty:          Number(getCol(r, 'Qta')) || 0,
-      })).filter(r => r.customerCode && r.ean && r.month >= 1 && r.month <= 12)
+  // Colonne range corrente e precedente
+  const cols     = useMemo(() => buildMonthRange(startYear, startMonth, endYear, endMonth),         [startYear, startMonth, endYear, endMonth])
+  const colsPrev = useMemo(() => buildMonthRange(startYear - 1, startMonth, endYear - 1, endMonth), [startYear, startMonth, endYear, endMonth])
 
-      if (rows.length === 0) throw new Error('Nessuna riga valida trovata. Controlla i nomi delle colonne (Cliente, Rag.Soc, Mese, EAN, Articolo, Descrizione, Qta).')
+  // numMonths definito subito dopo cols
+  const numMonths = cols.length
 
-      setRawRows(rows)
+  const yearsInRange     = useMemo(() => [...new Set(cols.map(c => c.year))],     [cols])
+  const yearsInRangePrev = useMemo(() => [...new Set(colsPrev.map(c => c.year))], [colsPrev])
 
-      // Precompila assegnazione clienti: prima dal mapping già esistente,
-      // poi con un suggerimento automatico per nome (es. "IPERAL SUPERMERCATI..." -> "IPERAL")
-      const custMap = {}
-      for (const r of rows) {
-        if (custMap[r.customerCode]) continue
-        const existing = mappingByCode[r.customerCode]
-        const suggestedId = existing ? null : suggestCustomerMatch(r.customerName, customers)
-        custMap[r.customerCode] = {
-          name: r.customerName,
-          customerId: existing ? existing.customer_id : (suggestedId || ''),
-          isNew: false,
-          newName: '',
-          suggested: !existing && !!suggestedId,
-        }
-      }
-      setCustomerAssign(custMap)
+  // Righe filtrate
+  const filteredRows = useMemo(() => brandRows.filter(r => {
+    if (filterCustomer && r.company_name        !== filterCustomer) return false
+    if (filterProduct  && r.product_description !== filterProduct)  return false
+    if (filterCategory && String(r.category_id) !== filterCategory) return false
+    return true
+  }), [brandRows, filterCustomer, filterProduct, filterCategory])
 
-      // Precompila assegnazione prodotti da EAN già esistenti
-      const prodMap = {}
-      for (const r of rows) {
-        if (prodMap[r.ean]) continue
-        const existing = productByEan[r.ean]
-        prodMap[r.ean] = {
-          sku: r.sku,
-          description: r.description,
-          existingProductId: existing ? existing.id : null,
-          brandId: existing ? existing.brand_id : detectBrand(r.description, brands),
-        }
-      }
-      setProductAssign(prodMap)
+  const rangeRows     = useMemo(() => filteredRows.filter(r => yearsInRange.includes(r.year)),     [filteredRows, yearsInRange])
+  const rangeRowsPrev = useMemo(() => filteredRows.filter(r => yearsInRangePrev.includes(r.year)), [filteredRows, yearsInRangePrev])
 
-      setImportName(`Import ${file.name.replace(/\.[^.]+$/, '')} — ${new Date().toLocaleDateString('it-IT')}`)
-      setStep(1)
-    } catch (err) {
-      setParseError(err.message || 'Errore durante la lettura del file.')
-    } finally {
-      setParsing(false)
+  // KPI
+  const totalRev  = useMemo(() => rangeRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0), 0), [rangeRows, cols])
+  const totalQty2 = useMemo(() => rangeRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0), 0), [rangeRows, cols])
+
+  // Rotazione media: pezzi filtrati / mesi / PDV rotazioni nel periodo (filtrate per cliente se attivo, per brand attivo)
+  const rotazioneMediaGlobale = useMemo(() => {
+    if (numMonths === 0 || totalQty2 === 0) return 0
+    const rangeStart = new Date(startYear, startMonth - 1, 1)
+    const rangeEnd   = new Date(endYear, endMonth - 1, 31)
+    const byCustomer = {}
+    for (const rot of rotations) {
+      const rotStart = new Date(rot.period_start)
+      const rotEnd   = new Date(rot.period_end)
+      if (rotEnd < rangeStart || rotStart > rangeEnd) continue
+      if (filterCustomer && rot.company_name !== filterCustomer) continue
+      if (activeBrandId && !rot.products?.some(rp => productBrandMap[rp.product_id] === activeBrandId)) continue
+      if (!byCustomer[rot.company_name]) byCustomer[rot.company_name] = { sum: 0, count: 0 }
+      byCustomer[rot.company_name].sum   += rot.num_points
+      byCustomer[rot.company_name].count += 1
     }
-  }
+    // Somma delle medie PDV per cliente (non la somma grezza di tutte le rotazioni)
+    const totalPdv = Object.values(byCustomer).reduce((s, v) => s + (v.sum / v.count), 0)
+    if (totalPdv === 0) return 0
+    return totalQty2 / numMonths / totalPdv
+  }, [totalQty2, numMonths, rotations, startYear, startMonth, endYear, endMonth, filterCustomer, activeBrandId, productBrandMap])
 
-  // -------- Step 2: clienti --------
-  const unresolvedCustomers = Object.entries(customerAssign).filter(([, v]) => !v.customerId && !v.isNew)
-  function setCustomerChoice(code, patch) {
-    setCustomerAssign(prev => ({ ...prev, [code]: { ...prev[code], ...patch } }))
-  }
-
-  // Marca come "nuovo cliente" tutti i codici senza abbinamento, copiando il nome esatto dal file
-  function handleBulkCreateNew() {
-    setCustomerAssign(prev => {
-      const updated = { ...prev }
-      for (const [code, v] of Object.entries(prev)) {
-        if (!v.customerId && !v.isNew) {
-          updated[code] = { ...v, isNew: true, newName: v.name }
-        }
-      }
-      return updated
-    })
-  }
-
-  const [advancingCustomers, setAdvancingCustomers] = useState(false)
-  const [advanceError, setAdvanceError] = useState('')
-
-  // Avanza dallo step Clienti: crea subito i clienti nuovi così hanno un id reale
-  // disponibile per lo step "Punti vendita"
-  async function handleAdvanceFromCustomers() {
-    setAdvanceError('')
-    const missingNew = Object.entries(customerAssign).filter(([, v]) => v.isNew && !v.newName.trim())
-    if (missingNew.length > 0) return setAdvanceError('Inserisci il nome per tutti i nuovi clienti, oppure abbinali a un cliente esistente.')
-
-    setAdvancingCustomers(true)
-    try {
-      const updated = { ...customerAssign }
-      for (const [code, v] of Object.entries(customerAssign)) {
-        if (!v.isNew) continue
-        const created = await upsertCustomer.mutateAsync({ company_name: v.newName.trim() })
-        updated[code] = { ...v, customerId: created.id, isNew: false }
-      }
-      setCustomerAssign(updated)
-      setStep(2)
-    } catch (err) {
-      setAdvanceError('Errore nella creazione dei clienti: ' + (err.message || 'riprova.'))
-    } finally {
-      setAdvancingCustomers(false)
+  // Punti vendita per cliente: media e massimo tra le rotazioni attive nel periodo selezionato, filtrate per brand attivo
+  const pdvByCustomer = useMemo(() => {
+    const rangeStart = new Date(startYear, startMonth - 1, 1)
+    const rangeEnd   = new Date(endYear, endMonth - 1, 31)
+    const map = {}
+    for (const rot of rotations) {
+      const rotStart = new Date(rot.period_start)
+      const rotEnd   = new Date(rot.period_end)
+      if (rotEnd < rangeStart || rotStart > rangeEnd) continue
+      if (filterCustomer && rot.company_name !== filterCustomer) continue
+      if (activeBrandId && !rot.products?.some(rp => productBrandMap[rp.product_id] === activeBrandId)) continue
+      if (!map[rot.company_name]) map[rot.company_name] = { sum: 0, count: 0, max: 0 }
+      map[rot.company_name].sum   += rot.num_points
+      map[rot.company_name].count += 1
+      map[rot.company_name].max    = Math.max(map[rot.company_name].max, rot.num_points)
     }
-  }
+    return Object.entries(map)
+      .map(([name, v]) => ({ name, avg: v.sum / v.count, max: v.max, count: v.count }))
+      .sort((a, b) => b.avg - a.avg)
+  }, [rotations, startYear, startMonth, endYear, endMonth, filterCustomer, activeBrandId, productBrandMap])
 
-  // -------- Step 3: prodotti --------
-  const unresolvedProducts = Object.entries(productAssign).filter(([, v]) => !v.existingProductId && !v.brandId)
-  function setProductChoice(ean, patch) {
-    setProductAssign(prev => ({ ...prev, [ean]: { ...prev[ean], ...patch } }))
-  }
-  const [bulkBrandId, setBulkBrandId] = useState('')
-  function handleBulkAssignBrand() {
-    if (!bulkBrandId) return
-    setProductAssign(prev => {
-      const updated = { ...prev }
-      for (const [ean, v] of Object.entries(prev)) {
-        if (!v.existingProductId && !v.brandId) updated[ean] = { ...v, brandId: Number(bulkBrandId) }
+  // Totale punti vendita: somma dei PDV medi di ciascun cliente (periodo + brand attivi)
+  const totalPdv = useMemo(
+    () => pdvByCustomer.reduce((s, c) => s + c.avg, 0),
+    [pdvByCustomer]
+  )
+
+  const today    = new Date()
+  const in60days = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000)
+  const expiringRotations = rotations
+    .filter(r => { const end = new Date(r.period_end); return end >= today && end <= in60days })
+    .sort((a, b) => new Date(a.period_end) - new Date(b.period_end))
+
+  const monthlyData = cols.map(c => ({
+    ...c,
+    rev: rangeRows.filter(r => r.year === c.year).reduce((s, r) => s + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0)
+  }))
+  const maxRev = Math.max(...monthlyData.map(m => m.rev), 1)
+
+  const byCustomer = useMemo(() => {
+    const curr = {}, prev = {}
+    for (const r of rangeRows)     { if (!curr[r.company_name]) curr[r.company_name] = 0; for (const c of cols)     if (c.year === r.year) curr[r.company_name] += Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0) }
+    for (const r of rangeRowsPrev) { if (!prev[r.company_name]) prev[r.company_name] = 0; for (const c of colsPrev) if (c.year === r.year) prev[r.company_name] += Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0) }
+    return Object.keys(curr).map(name => ({ name, curr: curr[name], prev: prev[name] || 0 })).sort((a, b) => b.curr - a.curr)
+  }, [rangeRows, rangeRowsPrev, cols, colsPrev])
+
+  const byProduct = useMemo(() => {
+    const curr = {}, prev = {}
+    for (const r of rangeRows)     { if (!curr[r.product_description]) curr[r.product_description] = 0; for (const c of cols)     if (c.year === r.year) curr[r.product_description] += Number(r[c.key] || 0) }
+    for (const r of rangeRowsPrev) { if (!prev[r.product_description]) prev[r.product_description] = 0; for (const c of colsPrev) if (c.year === r.year) prev[r.product_description] += Number(r[c.key] || 0) }
+    const rotProdMap = {}
+    for (const rot of rotations) {
+      const rotStart = new Date(rot.period_start), rotEnd = new Date(rot.period_end)
+      const rangeStart = new Date(startYear, startMonth - 1, 1), rangeEnd = new Date(endYear, endMonth - 1, 31)
+      if (rotEnd < rangeStart || rotStart > rangeEnd) continue
+      const step = { monthly: 1, bimonthly: 2, quarterly: 3, quadrimestral: 4 }[rot.frequency] || 1
+      const dur = (rotEnd.getFullYear() - rotStart.getFullYear()) * 12 + (rotEnd.getMonth() - rotStart.getMonth()) + 1
+      const ppm = (rot.num_points * rot.rotation_value * Math.ceil(dur / step)) / Math.max(dur, 1)
+      if (rot.products) for (const rp of rot.products) {
+        const pr = rows.find(r => r.product_id === rp.product_id)
+        if (!pr) continue
+        if (!rotProdMap[pr.product_description]) rotProdMap[pr.product_description] = 0
+        rotProdMap[pr.product_description] += ppm
       }
-      return updated
-    })
-    setBulkBrandId('')
-  }
-
-  // -------- Step 4: mesi + punti vendita --------
-  const resolvedCustomerIds = useMemo(() => {
-    // Elenco distinto dei customer_id risolti (esistenti o "nuovo" placeholder gestito a parte)
-    const ids = new Set()
-    Object.values(customerAssign).forEach(v => { if (v.customerId) ids.add(v.customerId) })
-    return [...ids]
-  }, [customerAssign])
-
-  function customerLabel(id) {
-    return customers.find(c => c.id === id)?.company_name || `#${id}`
-  }
-
-  // -------- Finalizzazione --------
-  async function handleFinalize() {
-    setFinalizeError('')
-    if (!importName.trim()) return setFinalizeError('Inserisci un nome per l\'import.')
-    const nm = Number(numMonths)
-    if (!nm || nm < 1 || nm > 12) return setFinalizeError('Inserisci un numero di mesi valido (1-12).')
-
-    setFinalizing(true)
-    try {
-      // 1. Crea i clienti nuovi richiesti in step 2
-      const codeToCustomerId = {}
-      for (const [code, v] of Object.entries(customerAssign)) {
-        if (v.customerId) { codeToCustomerId[code] = v.customerId; continue }
-        if (v.isNew) {
-          const created = await upsertCustomer.mutateAsync({ company_name: v.newName || v.name })
-          codeToCustomerId[code] = created.id
-        }
-      }
-
-      // 2. Crea i prodotti nuovi richiesti in step 3
-      const eanToProductId = {}
-      const toCreate = []
-      for (const [ean, v] of Object.entries(productAssign)) {
-        if (v.existingProductId) { eanToProductId[ean] = v.existingProductId; continue }
-        toCreate.push({ ean, sku: v.sku, description: v.description, description_report: v.description, brand_id: v.brandId })
-      }
-      if (toCreate.length > 0) {
-        const created = await createProductsBulk.mutateAsync(toCreate)
-        for (const p of created) eanToProductId[p.ean] = p.id
-      }
-
-      // 3. Prepara i nuovi abbinamenti cliente permanenti (solo quelli non già mappati)
-      const newMappings = Object.entries(customerAssign)
-        .filter(([code]) => !mappingByCode[code])
-        .map(([code, v]) => ({ gestionale_code: code, gestionale_name: v.name, customer_id: codeToCustomerId[code] }))
-
-      // 4. Punti vendita per cliente (solo clienti effettivamente coinvolti)
-      const allCustomerIdsInvolved = [...new Set(Object.values(codeToCustomerId))]
-      const importCustomers = allCustomerIdsInvolved.map(cid => ({
-        customer_id: cid,
-        num_points: Number(pointsByCustomer[cid]) || 0,
-      })).filter(c => c.num_points > 0)
-
-      if (importCustomers.length < allCustomerIdsInvolved.length) {
-        setFinalizing(false)
-        return setFinalizeError('Inserisci i punti vendita per tutti i clienti coinvolti.')
-      }
-
-      // 5. Aggrega le righe per cliente+prodotto+mese e prepara l'insert finale
-      const agg = {}
-      for (const r of rawRows) {
-        const customerId = codeToCustomerId[r.customerCode]
-        const productId  = eanToProductId[r.ean]
-        if (!customerId || !productId) continue
-        const key = `${customerId}_${productId}_${r.month}`
-        if (!agg[key]) agg[key] = { customer_id: customerId, product_id: productId, month: r.month, qty: 0 }
-        agg[key].qty += r.qty
-      }
-      const lines = Object.values(agg)
-
-      await finalizeImport.mutateAsync({ name: importName.trim(), numMonths: nm, newMappings, importCustomers, lines })
-      navigate('/sellin/report')
-    } catch (err) {
-      setFinalizeError('Errore durante il salvataggio: ' + (err.message || 'riprova.'))
-    } finally {
-      setFinalizing(false)
     }
-  }
+    return Object.keys(curr).map(name => ({ name, curr: curr[name], prev: prev[name] || 0, rotMedia: rotProdMap[name] || 0 })).sort((a, b) => b.curr - a.curr)
+  }, [rangeRows, rangeRowsPrev, cols, colsPrev, rotations, rows, startYear, startMonth, endYear, endMonth])
 
-  const canGoStep2 = unresolvedCustomers.length === 0 &&
-    Object.values(customerAssign).every(v => !v.isNew || v.newName.trim())
-  const canGoStep3 = unresolvedProducts.length === 0
+  const FREQ = { monthly: 'Mensile', bimonthly: 'Bimestrale', quarterly: 'Trimestrale', quadrimestral: 'Quadrimestrale' }
+  const currLabel  = `${MONTHS_SHORT[startMonth-1]} ${startYear} → ${MONTHS_SHORT[endMonth-1]} ${endYear}`
+  const prevLabel  = `${MONTHS_SHORT[startMonth-1]} ${startYear-1} → ${MONTHS_SHORT[endMonth-1]} ${endYear-1}`
+  const hasFilters = filterCustomer || filterCategory || filterProduct
+
+  const uniqueProducts  = useMemo(() => [...new Set(brandRows.map(r => r.product_description))].sort(), [brandRows])
+  const uniqueCustomers = useMemo(() => [...new Set(brandRows.map(r => r.company_name))].sort(), [brandRows])
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <PageHeader title="Nuovo import Sell-in" description="Carica ed elabora un file di venduto dal gestionale" />
-
-      {/* Stepper */}
-      <div className="flex items-center gap-2 mb-6 flex-wrap">
-        {STEPS.map((s, i) => (
-          <div key={s} className="flex items-center gap-2">
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${i === step ? '' : i < step ? '' : ''}`}
-              style={{
-                backgroundColor: i === step ? 'var(--brand)' : i < step ? 'var(--brand-50)' : 'var(--alt-row)',
-                color: i === step ? 'white' : i < step ? 'var(--brand)' : 'var(--text-muted)',
-              }}>
-              {i < step ? <Check size={12} /> : <span>{i + 1}</span>}
-              {s}
-            </div>
-            {i < STEPS.length - 1 && <div className="w-4 h-px" style={{ backgroundColor: 'var(--border)' }} />}
-          </div>
-        ))}
+    <div className="max-w-7xl mx-auto">
+      <div className="mb-4">
+        <h1 className="text-xl font-semibold" style={{ color: 'var(--text-main)' }}>Dashboard</h1>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--text-sub)' }}>Riepilogo forecast</p>
       </div>
 
-      {/* STEP 0: upload */}
-      {step === 0 && (
-        <div className="card p-8 flex flex-col items-center justify-center gap-4 text-center">
-          <Upload size={32} style={{ color: 'var(--text-muted)' }} />
-          <div>
-            <p className="text-sm font-medium" style={{ color: 'var(--text-main)' }}>Carica il file Excel esportato dal gestionale</p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Colonne attese: Cliente, Rag.Soc, Mese, EAN, Articolo, Descrizione, Qta</p>
-          </div>
-          <label className="btn-primary cursor-pointer">
-            {parsing ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Upload size={15} />}
-            {parsing ? 'Lettura in corso…' : 'Scegli file'}
-            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFile} disabled={parsing} />
-          </label>
-          {fileName && !parseError && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{fileName}</p>}
-          {parseError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{parseError}</p>}
-        </div>
-      )}
+      {/* Filtro globale — selettori a larghezza automatica SEMPRE */}
+      <div className="card px-4 py-3 mb-6 flex items-center gap-3 flex-wrap">
+        <span className="text-sm font-medium" style={{ color: 'var(--text-main)' }}>Periodo:</span>
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '80px' }} value={startMonth} onChange={e => setStartMonth(Number(e.target.value))}>
+          {MONTHS_SHORT.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+        </select>
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '70px' }} value={startYear} onChange={e => setStartYear(Number(e.target.value))}>
+          {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <span style={{ color: 'var(--text-muted)' }}>→</span>
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '80px' }} value={endMonth} onChange={e => setEndMonth(Number(e.target.value))}>
+          {MONTHS_SHORT.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+        </select>
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '70px' }} value={endYear} onChange={e => setEndYear(Number(e.target.value))}>
+          {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <div className="w-px h-5 mx-1" style={{ backgroundColor: 'var(--border)' }} />
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '130px' }} value={filterCustomer} onChange={e => setFilterCustomer(e.target.value)}>
+          <option value="">Tutti i clienti</option>
+          {uniqueCustomers.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '130px' }} value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+          <option value="">Tutte le categorie</option>
+          {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+        </select>
+        <select className="input text-sm" style={{ width: 'auto', minWidth: '130px' }} value={filterProduct} onChange={e => setFilterProduct(e.target.value)}>
+          <option value="">Tutti i prodotti</option>
+          {uniqueProducts.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        {hasFilters && (
+          <button className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}
+            onClick={() => { setFilterCustomer(''); setFilterCategory(''); setFilterProduct('') }}>
+            Pulisci filtri
+          </button>
+        )}
+        <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)' }}>{numMonths} mes{numMonths === 1 ? 'e' : 'i'}</span>
+      </div>
 
-      {/* STEP 1: clienti */}
-      {step === 1 && (
-        <div className="card p-5">
-          <div className="flex items-center justify-between mb-1">
-            <h2 className="text-sm font-medium" style={{ color: 'var(--text-main)' }}>Abbinamento clienti</h2>
-            {unresolvedCustomers.length > 0 && (
-              <button className="btn-secondary text-xs" onClick={handleBulkCreateNew}>
-                <Plus size={13} /> Crea come nuovi i {unresolvedCustomers.length} clienti mancanti
-              </button>
-            )}
-          </div>
-          <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
-            {Object.keys(customerAssign).length} clienti trovati nel file · {Object.values(customerAssign).filter(v => v.customerId && !v.suggested).length} già riconosciuti ·
-            {' '}{Object.values(customerAssign).filter(v => v.suggested).length} suggeriti da verificare
-          </p>
-          <div className="rounded-lg overflow-hidden" style={{ border: `1px solid var(--border)` }}>
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ backgroundColor: 'var(--alt-row)' }}>
-                  <th className="text-left px-3 py-2 font-medium text-xs" style={{ color: 'var(--text-sub)' }}>Codice</th>
-                  <th className="text-left px-3 py-2 font-medium text-xs" style={{ color: 'var(--text-sub)' }}>Nome nel file</th>
-                  <th className="text-left px-3 py-2 font-medium text-xs" style={{ color: 'var(--text-sub)' }}>Cliente CRM</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                {Object.entries(customerAssign).map(([code, v]) => {
-                  const alreadyMapped = !!mappingByCode[code]
-                  return (
-                    <tr key={code}>
-                      <td className="px-3 py-2 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>{code}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--text-main)' }}>{v.name}</td>
-                      <td className="px-3 py-2">
-                        {alreadyMapped ? (
-                          <span className="inline-flex items-center gap-1 text-xs" style={{ color: '#16a34a' }}>
-                            <Check size={13} /> {customerLabel(v.customerId)}
-                          </span>
-                        ) : v.isNew ? (
-                          <div className="flex items-center gap-2">
-                            <input className="input text-xs" style={{ width: '220px' }} placeholder="Nome nuovo cliente"
-                              value={v.newName} onChange={e => setCustomerChoice(code, { newName: e.target.value })} />
-                            <button className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}
-                              onClick={() => setCustomerChoice(code, { isNew: false, newName: '' })}>Annulla</button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <select className="input text-xs" style={{ width: '220px' }} value={v.customerId}
-                              onChange={e => setCustomerChoice(code, { customerId: e.target.value ? Number(e.target.value) : '', suggested: false })}>
-                              <option value="">— Seleziona cliente —</option>
-                              {customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
-                            </select>
-                            {v.suggested && v.customerId && (
-                              <span className="text-xs" style={{ color: '#d97706' }}>suggerito — verifica</span>
-                            )}
-                            <button className="text-xs hover:underline flex items-center gap-1" style={{ color: 'var(--brand)' }}
-                              onClick={() => setCustomerChoice(code, { isNew: true })}>
-                              <Plus size={12} /> Nuovo
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* KPI */}
+      <div className="grid grid-cols-2 gap-4 mb-6 lg:grid-cols-4">
+        <KpiCard icon={TrendingUp} label="Fatturato previsto"     value={fmtEur(totalRev)}              sub={currLabel}                    color="bg-brand-600" />
+        <KpiCard icon={Package}    label="Pezzi previsti"         value={fmt(totalQty2)}                sub={currLabel}                    color="bg-teal-500" />
+        <KpiCard icon={Users}      label="Clienti attivi"         value={customers.length}              sub="in anagrafica"                color="bg-indigo-500" />
+        <KpiCard icon={Store}      label="Punti vendita totali"   value={fmtDec(totalPdv)}              sub={`${currLabel} · brand attivo`} color="bg-rose-500" />
+      </div>
 
-      {/* STEP 2: prodotti */}
-      {step === 2 && (
+      {/* Grafico mensile */}
+      <div className="card p-5 mb-6">
+        <h2 className="text-sm font-medium mb-4" style={{ color: 'var(--text-main)' }}>Andamento mensile — fatturato</h2>
+        {isLoading ? (
+          <div className="h-48 flex items-center justify-center text-sm" style={{ color: 'var(--text-muted)' }}>Caricamento…</div>
+        ) : (
+          <div className="flex items-end gap-1" style={{ height: '160px' }}>
+            {monthlyData.map(m => {
+              const barH = m.rev > 0 ? Math.max((m.rev / maxRev) * 130, 8) : 0
+              return (
+                <div key={`${m.year}-${m.month}`} className="flex-1 flex flex-col items-center justify-end gap-1">
+                  {m.rev > 0 && <span style={{ fontSize: '8px', color: 'var(--text-muted)', marginBottom: '2px', whiteSpace: 'nowrap' }}>{fmtEur(m.rev)}</span>}
+                  <div style={{ height: `${barH}px`, backgroundColor: 'var(--brand)', borderRadius: '4px 4px 0 0', width: '100%' }} title={fmtEur(m.rev)} />
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{m.label}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Top clienti + Top prodotti */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-6" style={{ alignItems: 'start' }}>
         <div className="card p-5">
-          <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
-            <h2 className="text-sm font-medium" style={{ color: 'var(--text-main)' }}>Abbinamento prodotti</h2>
-            {unresolvedProducts.length > 0 && (
-              <div className="flex items-center gap-2">
-                <select className="input text-xs" style={{ width: '180px' }} value={bulkBrandId} onChange={e => setBulkBrandId(e.target.value)}>
-                  <option value="">— Assegna brand a tutti i {unresolvedProducts.length} mancanti —</option>
-                  {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-                <button className="btn-secondary text-xs" onClick={handleBulkAssignBrand} disabled={!bulkBrandId}>
-                  Applica a tutti
-                </button>
+          <h2 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>
+            Clienti per fatturato
+            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>({byCustomer.length} · clicca per dettaglio)</span>
+          </h2>
+          {byCustomer.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessun dato nel periodo selezionato.</p>
+          ) : (
+            <div style={{ height: '320px', overflowY: 'scroll', paddingRight: '10px' }}>
+              <div className="space-y-2 pr-1">
+                {byCustomer.map((c, i) => (
+                  <div key={c.name} className="flex items-center gap-3">
+                    <span className="text-xs font-medium w-5 shrink-0" style={{ color: 'var(--text-muted)' }}>{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs truncate cursor-pointer hover:underline" style={{ color: 'var(--brand)' }}
+                          onClick={() => setSelectedCustomer(c.name)}>{c.name}</span>
+                        <span className="text-xs font-medium ml-2 shrink-0" style={{ color: 'var(--text-main)' }}>{fmtEur(c.curr)}</span>
+                      </div>
+                      <div className="h-1 rounded mt-1" style={{ backgroundColor: 'var(--border)' }}>
+                        <div className="h-1 bg-brand-400 rounded" style={{ width: `${(c.curr / (byCustomer[0]?.curr || 1)) * 100}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
-          <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
-            {Object.keys(productAssign).length} prodotti trovati nel file · {Object.values(productAssign).filter(v => v.existingProductId).length} già in anagrafica ·
-            {' '}{Object.values(productAssign).filter(v => !v.existingProductId).length} da creare
-          </p>
-          <div className="rounded-lg overflow-hidden max-h-[500px] overflow-y-auto" style={{ border: `1px solid var(--border)` }}>
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ backgroundColor: 'var(--alt-row)' }}>
-                  <th className="text-left px-3 py-2 font-medium text-xs" style={{ color: 'var(--text-sub)' }}>EAN</th>
-                  <th className="text-left px-3 py-2 font-medium text-xs" style={{ color: 'var(--text-sub)' }}>Descrizione</th>
-                  <th className="text-left px-3 py-2 font-medium text-xs" style={{ color: 'var(--text-sub)' }}>Stato</th>
-                  <th className="text-left px-3 py-2 font-medium text-xs" style={{ color: 'var(--text-sub)' }}>Brand</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                {Object.entries(productAssign).map(([ean, v]) => (
-                  <tr key={ean}>
-                    <td className="px-3 py-2 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>{ean}</td>
-                    <td className="px-3 py-2 text-xs" style={{ color: 'var(--text-main)' }}>{v.description}</td>
-                    <td className="px-3 py-2">
-                      {v.existingProductId ? (
-                        <span className="inline-flex items-center gap-1 text-xs" style={{ color: '#16a34a' }}><Check size={13} /> Esistente</span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--brand)' }}><Plus size={13} /> Nuovo prodotto</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {v.existingProductId ? (
-                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{brands.find(b => b.id === v.brandId)?.name || '—'}</span>
-                      ) : v.brandId ? (
-                        <span className="text-xs" style={{ color: '#16a34a' }}>{brands.find(b => b.id === v.brandId)?.name} (auto)</span>
-                      ) : (
-                        <select className="input text-xs" style={{ width: '160px' }} value={v.brandId || ''}
-                          onChange={e => setProductChoice(ean, { brandId: e.target.value ? Number(e.target.value) : null })}>
-                          <option value="">— Assegna brand —</option>
-                          {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                        </select>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* STEP 3: mesi + punti vendita */}
-      {step === 3 && (
-        <div className="card p-5">
-          <h2 className="text-sm font-medium mb-4" style={{ color: 'var(--text-main)' }}>Mesi e punti vendita</h2>
-          <div className="grid grid-cols-2 gap-4 mb-5">
-            <div>
-              <label className="label">Nome import</label>
-              <input className="input" value={importName} onChange={e => setImportName(e.target.value)} />
             </div>
-            <div>
-              <label className="label">Numero mesi coperti dall'import</label>
-              <input className="input" type="number" min="1" max="12" placeholder="es. 9" value={numMonths}
-                onChange={e => setNumMonths(e.target.value)} />
-            </div>
-          </div>
-
-          <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Punti vendita per ciascun cliente coinvolto in questo import:</p>
-          <div className="rounded-lg overflow-hidden" style={{ border: `1px solid var(--border)` }}>
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ backgroundColor: 'var(--alt-row)' }}>
-                  <th className="text-left px-3 py-2 font-medium text-xs" style={{ color: 'var(--text-sub)' }}>Cliente</th>
-                  <th className="text-right px-3 py-2 font-medium text-xs" style={{ color: 'var(--text-sub)' }}>Punti vendita</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                {[...new Set(Object.values(customerAssign).map(v => v.customerId).filter(Boolean))].map(cid => (
-                  <tr key={cid}>
-                    <td className="px-3 py-2" style={{ color: 'var(--text-main)' }}>{customerLabel(cid)}</td>
-                    <td className="px-3 py-2 text-right">
-                      <input className="input text-right text-xs" style={{ width: '100px', marginLeft: 'auto' }} type="number" min="1" step="1"
-                        value={pointsByCustomer[cid] || ''}
-                        onChange={e => setPointsByCustomer(prev => ({ ...prev, [cid]: e.target.value }))} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* STEP 4: conferma */}
-      {step === 4 && (
-        <div className="card p-5">
-          <h2 className="text-sm font-medium mb-4" style={{ color: 'var(--text-main)' }}>Conferma import</h2>
-          <div className="grid grid-cols-2 gap-3 mb-5 text-sm">
-            <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--alt-row)' }}>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Righe totali</p>
-              <p className="font-semibold" style={{ color: 'var(--text-main)' }}>{rawRows.length}</p>
-            </div>
-            <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--alt-row)' }}>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Clienti coinvolti</p>
-              <p className="font-semibold" style={{ color: 'var(--text-main)' }}>{Object.keys(customerAssign).length}</p>
-            </div>
-            <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--alt-row)' }}>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Prodotti nuovi da creare</p>
-              <p className="font-semibold" style={{ color: 'var(--text-main)' }}>{Object.values(productAssign).filter(v => !v.existingProductId).length}</p>
-            </div>
-            <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--alt-row)' }}>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Mesi coperti</p>
-              <p className="font-semibold" style={{ color: 'var(--text-main)' }}>{numMonths || '—'}</p>
-            </div>
-          </div>
-          {finalizeError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{finalizeError}</p>}
-          <button className="btn-primary" onClick={handleFinalize} disabled={finalizing}>
-            {finalizing ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Check size={15} />}
-            {finalizing ? 'Salvataggio in corso…' : 'Conferma e importa'}
-          </button>
-        </div>
-      )}
-
-      {/* Navigazione step */}
-      {step > 0 && (
-        <div className="flex justify-between mt-4">
-          <button className="btn-secondary" onClick={() => setStep(s => s - 1)} disabled={finalizing || advancingCustomers}>
-            <ArrowLeft size={15} /> Indietro
-          </button>
-          {step < 4 && (
-            <button className="btn-primary"
-              onClick={() => {
-                if (step === 1) { handleAdvanceFromCustomers(); return }
-                setStep(s => s + 1)
-              }}
-              disabled={(step === 1 && (!canGoStep2 || advancingCustomers)) || (step === 2 && !canGoStep3)}>
-              {step === 1 && advancingCustomers
-                ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <>Avanti <ArrowRight size={15} /></>
-              }
-            </button>
           )}
         </div>
-      )}
-      {step === 1 && advanceError && (
-        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-3">{advanceError}</p>
+
+        <div className="card p-5">
+          <h2 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>
+            Prodotti per pezzi
+            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>({byProduct.length} totali)</span>
+          </h2>
+          {byProduct.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessun dato nel periodo selezionato.</p>
+          ) : (
+            <div style={{ height: '320px', overflowY: 'scroll', paddingRight: '10px' }}>
+              <div className="space-y-2 pr-1">
+                {byProduct.map((p, i) => (
+                  <div key={p.name} className="flex items-center gap-3">
+                    <span className="text-xs font-medium w-5 shrink-0" style={{ color: 'var(--text-muted)' }}>{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs truncate" style={{ color: 'var(--text-main)' }}>{p.name}</span>
+                        <div className="flex items-center gap-2 ml-2 shrink-0">
+                          {p.rotMedia > 0 && <span className="text-xs text-amber-500 font-medium">{fmtDec(p.rotMedia)} rot/mese</span>}
+                          <span className="text-xs font-medium" style={{ color: 'var(--text-main)' }}>{fmt(p.curr)} pz</span>
+                        </div>
+                      </div>
+                      <div className="h-1 rounded mt-1" style={{ backgroundColor: 'var(--border)' }}>
+                        <div className="h-1 bg-teal-400 rounded" style={{ width: `${(p.curr / (byProduct[0]?.curr || 1)) * 100}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Confronto anno precedente + Punti vendita per cliente */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-6" style={{ alignItems: 'start' }}>
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-medium" style={{ color: 'var(--text-main)' }}>
+              Confronto anno precedente
+              <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>{prevLabel} vs {currLabel}</span>
+            </h2>
+            <div className="flex gap-1">
+              {['clienti', 'prodotti'].map(tab => (
+                <button key={tab} onClick={() => setConfrontoTab(tab)}
+                  className="px-3 py-1 rounded text-xs font-medium transition-colors capitalize"
+                  style={{ backgroundColor: confrontoTab === tab ? 'var(--brand)' : 'var(--alt-row)', color: confrontoTab === tab ? 'white' : 'var(--text-sub)' }}>
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </div>
+          {confrontoTab === 'clienti' ? (
+            <div style={{ maxHeight: '320px', overflowY: 'scroll', paddingRight: '10px' }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                    <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Cliente</th>
+                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear - 1}</th>
+                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear}</th>
+                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Var. %</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                  {byCustomer.map(c => (
+                    <tr key={c.name}>
+                      <td className="py-2 cursor-pointer hover:underline" style={{ color: 'var(--brand)' }} onClick={() => setSelectedCustomer(c.name)}>{c.name}</td>
+                      <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{fmtEur(c.prev)}</td>
+                      <td className="py-2 text-right font-medium" style={{ color: 'var(--text-main)' }}>{fmtEur(c.curr)}</td>
+                      <td className="py-2 text-right"><DeltaBadge curr={c.curr} prev={c.prev} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ maxHeight: '320px', overflowY: 'scroll', paddingRight: '10px' }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                    <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Prodotto</th>
+                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear - 1} (pz)</th>
+                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear} (pz)</th>
+                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Var. %</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                  {byProduct.map(p => (
+                    <tr key={p.name}>
+                      <td className="py-2" style={{ color: 'var(--text-main)' }}>{p.name}</td>
+                      <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{fmt(p.prev)}</td>
+                      <td className="py-2 text-right font-medium" style={{ color: 'var(--text-main)' }}>{fmt(p.curr)}</td>
+                      <td className="py-2 text-right"><DeltaBadge curr={p.curr} prev={p.prev} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Punti vendita per cliente */}
+        <div className="card p-5">
+          <h2 className="text-sm font-medium mb-4" style={{ color: 'var(--text-main)' }}>
+            Punti vendita per cliente
+            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>da rotazioni attive nel periodo</span>
+          </h2>
+          {pdvByCustomer.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessuna rotazione attiva nel periodo selezionato.</p>
+          ) : (
+            <div style={{ maxHeight: '320px', overflowY: 'scroll', paddingRight: '10px' }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                    <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Cliente</th>
+                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>PDV medio</th>
+                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>PDV massimo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                  {pdvByCustomer.map(c => (
+                    <tr key={c.name}>
+                      <td className="py-2 cursor-pointer hover:underline" style={{ color: 'var(--brand)' }} onClick={() => setSelectedCustomer(c.name)}>{c.name}</td>
+                      <td className="py-2 text-right font-medium" style={{ color: 'var(--text-main)' }}>{c.avg.toFixed(1)}</td>
+                      <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{c.max}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Rotazioni in scadenza — non filtrate */}
+      <div className="card p-5">
+        <h2 className="text-sm font-medium mb-3" style={{ color: 'var(--text-main)' }}>
+          Rotazioni in scadenza nei prossimi 60 giorni
+          {expiringRotations.length > 0 && (
+            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">{expiringRotations.length}</span>
+          )}
+        </h2>
+        {expiringRotations.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessuna rotazione in scadenza nei prossimi 60 giorni.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Cliente</th>
+                <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Prodotti</th>
+                <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Frequenza</th>
+                <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Scadenza</th>
+                <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Giorni rimanenti</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+              {expiringRotations.map(r => {
+                const end = new Date(r.period_end)
+                const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24))
+                return (
+                  <tr key={r.id}>
+                    <td className="py-2 font-medium" style={{ color: 'var(--text-main)' }}>{r.company_name}</td>
+                    <td className="py-2" style={{ color: 'var(--text-sub)' }}>{r.product_count} prodotti</td>
+                    <td className="py-2" style={{ color: 'var(--text-sub)' }}>{FREQ[r.frequency]}</td>
+                    <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{end.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}</td>
+                    <td className="py-2 text-right">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${daysLeft <= 14 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {daysLeft} giorni
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {selectedCustomer && (
+        <CustomerModal customerName={selectedCustomer} rows={rangeRows} cols={cols} onClose={() => setSelectedCustomer(null)} />
       )}
     </div>
   )
