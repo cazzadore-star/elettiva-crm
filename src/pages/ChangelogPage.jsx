@@ -5,6 +5,18 @@ import PageHeader from '../components/ui/PageHeader'
 // ============================================================
 const CHANGELOG = [
   {
+    version: 'v1.11.0',
+    date: '2026-09-25',
+    items: [
+      'Nuova sezione "Sell-in": importazione del venduto storico esportato dal gestionale, con normalizzazione guidata di clienti e prodotti',
+      'Abbinamento clienti con suggerimento automatico per nome (es. "IPERAL SUPERMERCATI S.p.A. con socio unico" → cliente CRM "IPERAL"), abbinamento permanente riutilizzato nei futuri import',
+      'Prodotti nuovi creati automaticamente per EAN non presente in anagrafica, con riconoscimento automatico del brand dalla descrizione',
+      'Punti vendita per cliente inseribili per ogni singolo import (opzionali)',
+      'Report Sell-in annuale: somma automaticamente tutti gli import dello stesso anno per prodotto e cliente, con colonne mensili e rotazione media calcolata sull\'intera copertura dell\'anno',
+      'Menu laterale riorganizzato in sezioni: Previsionale, Sell-in, Sistema',
+    ],
+  },
+  {
     version: 'v1.10.0',
     date: '2026-09-09',
     items: [

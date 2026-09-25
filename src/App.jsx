@@ -13,6 +13,8 @@ import AuditLogPage from './pages/AuditLogPage'
 import ChangelogPage from './pages/ChangelogPage'
 import ArchivePage from './pages/ArchivePage'
 import SettingsPage from './pages/SettingsPage'
+import SellinImportPage from './pages/SellinImportPage'
+import SellinReportPage from './pages/SellinReportPage'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -48,6 +50,8 @@ export default function App() {
           <Route path="settings"   element={<SettingsPage />} />
           <Route path="auditlog"   element={<AuditLogPage />} />
           <Route path="changelog"  element={<ChangelogPage />} />
+          <Route path="sellin/import" element={<SellinImportPage />} />
+          <Route path="sellin/report" element={<SellinReportPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

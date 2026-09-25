@@ -5,7 +5,7 @@ import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 import { useCanEdit } from '../hooks/useUserRole'
 
-const EMPTY_FORM = { company_name: '' }
+const EMPTY_FORM = { company_name: '', num_points: '' }
 
 export default function CustomersPage() {
   const [search, setSearch]             = useState('')
@@ -30,7 +30,7 @@ export default function CustomersPage() {
   }
 
   function openEdit(customer) {
-    setForm({ id: customer.id, company_name: customer.company_name, active: customer.active })
+    setForm({ id: customer.id, company_name: customer.company_name, active: customer.active, num_points: customer.num_points ?? '' })
     setFormError('')
     setModalOpen(true)
   }
@@ -93,6 +93,7 @@ export default function CustomersPage() {
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--alt-row)' }}>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Ragione sociale</th>
+                <th className="text-right px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Punti vendita</th>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-sub)' }}>Stato</th>
                 {canEdit && <th className="px-4 py-3" />}
               </tr>
@@ -108,6 +109,9 @@ export default function CustomersPage() {
                     onMouseLeave={e => Array.from(e.currentTarget.cells).forEach(td => td.style.backgroundColor = bg)}
                   >
                     <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-main)' }}>{customer.company_name}</td>
+                    <td className="px-4 py-3 text-right" style={{ color: 'var(--text-main)' }}>
+                      {customer.num_points ?? <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                    </td>
                     <td className="px-4 py-3">
                       {customer.active
                         ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">Attivo</span>
@@ -161,6 +165,11 @@ export default function CustomersPage() {
               <label className="label">Ragione sociale</label>
               <input className="input" placeholder="es. Supermercati Rossi Srl" value={form.company_name}
                 onChange={e => setForm(f => ({ ...f, company_name: e.target.value }))} autoFocus />
+            </div>
+            <div>
+              <label className="label">Punti vendita</label>
+              <input className="input" type="number" min="0" step="1" placeholder="es. 60" value={form.num_points}
+                onChange={e => setForm(f => ({ ...f, num_points: e.target.value }))} />
             </div>
             {formError && (
               <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{formError}</p>

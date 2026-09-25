@@ -83,6 +83,7 @@ export default function SellinImportPage() {
   // Step 4
   const [importName, setImportName] = useState('')
   const [numMonths, setNumMonths] = useState('')
+  const [importYear, setImportYear] = useState(new Date().getFullYear())
   const [pointsByCustomer, setPointsByCustomer] = useState({}) // { customerId: numPoints }
 
   const [finalizing, setFinalizing] = useState(false)
@@ -256,6 +257,7 @@ export default function SellinImportPage() {
     if (!importName.trim()) return setFinalizeError('Inserisci un nome per l\'import.')
     const nm = Number(numMonths)
     if (!nm || nm < 1 || nm > 12) return setFinalizeError('Inserisci un numero di mesi valido (1-12).')
+    if (!importYear || importYear < 2020 || importYear > 2099) return setFinalizeError('Inserisci un anno valido.')
 
     setFinalizing(true)
     try {
@@ -286,18 +288,12 @@ export default function SellinImportPage() {
         .filter(([code]) => !mappingByCode[code])
         .map(([code, v]) => ({ gestionale_code: code, gestionale_name: v.name, customer_id: codeToCustomerId[code] }))
 
-      // 4. Punti vendita per cliente (solo clienti effettivamente coinvolti)
+      // 4. Punti vendita per cliente (opzionali: se non inseriti, 0)
       const allCustomerIdsInvolved = [...new Set(Object.values(codeToCustomerId))]
       const importCustomers = allCustomerIdsInvolved.map(cid => ({
         customer_id: cid,
         num_points: Number(pointsByCustomer[cid]) || 0,
-      })).filter(c => c.num_points > 0)
-
-      if (importCustomers.length < allCustomerIdsInvolved.length) {
-        setFinalizing(false)
-        return setFinalizeError('Inserisci i punti vendita per tutti i clienti coinvolti.')
-      }
-
+      }))
       // 5. Aggrega le righe per cliente+prodotto+mese e prepara l'insert finale
       const agg = {}
       for (const r of rawRows) {
@@ -310,7 +306,7 @@ export default function SellinImportPage() {
       }
       const lines = Object.values(agg)
 
-      await finalizeImport.mutateAsync({ name: importName.trim(), numMonths: nm, newMappings, importCustomers, lines })
+      await finalizeImport.mutateAsync({ name: importName.trim(), year: importYear, numMonths: nm, newMappings, importCustomers, lines })
       navigate('/sellin/report')
     } catch (err) {
       setFinalizeError('Errore durante il salvataggio: ' + (err.message || 'riprova.'))
@@ -499,10 +495,16 @@ export default function SellinImportPage() {
       {step === 3 && (
         <div className="card p-5">
           <h2 className="text-sm font-medium mb-4" style={{ color: 'var(--text-main)' }}>Mesi e punti vendita</h2>
-          <div className="grid grid-cols-2 gap-4 mb-5">
+          <div className="grid grid-cols-3 gap-4 mb-5">
             <div>
               <label className="label">Nome import</label>
               <input className="input" value={importName} onChange={e => setImportName(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Anno di riferimento</label>
+              <input className="input" type="number" min="2020" max="2099" value={importYear}
+                onChange={e => setImportYear(Number(e.target.value))} />
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Usato per sommare automaticamente più import dello stesso anno.</p>
             </div>
             <div>
               <label className="label">Numero mesi coperti dall'import</label>
@@ -511,7 +513,7 @@ export default function SellinImportPage() {
             </div>
           </div>
 
-          <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Punti vendita per ciascun cliente coinvolto in questo import:</p>
+          <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Punti vendita per ciascun cliente coinvolto in questo import (opzionale — se lasciato vuoto viene usato 0):</p>
           <div className="rounded-lg overflow-hidden" style={{ border: `1px solid var(--border)` }}>
             <table className="w-full text-sm">
               <thead>
@@ -557,6 +559,10 @@ export default function SellinImportPage() {
             <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--alt-row)' }}>
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Mesi coperti</p>
               <p className="font-semibold" style={{ color: 'var(--text-main)' }}>{numMonths || '—'}</p>
+            </div>
+            <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--alt-row)' }}>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Anno</p>
+              <p className="font-semibold" style={{ color: 'var(--text-main)' }}>{importYear}</p>
             </div>
           </div>
           {finalizeError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{finalizeError}</p>}

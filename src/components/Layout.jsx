@@ -6,7 +6,8 @@ import { useActiveBrand } from '../hooks/useActiveBrand'
 import {
   LayoutDashboard, Package, Users, Tag,
   BarChart2, FileText, LogOut, Zap,
-  RefreshCw, Archive, Settings, Sun, Moon, ClipboardList, History, ChevronDown
+  RefreshCw, Archive, Settings, Sun, Moon, ClipboardList, History, ChevronDown,
+  Upload, TrendingUp
 } from 'lucide-react'
 
 export default function Layout() {
@@ -17,18 +18,35 @@ export default function Layout() {
   const navigate               = useNavigate()
   const { activeBrandId, setActiveBrandId, brands } = useActiveBrand()
 
-  const NAV = [
-    { to: '/dashboard',  label: 'Dashboard',    icon: LayoutDashboard },
-    { to: '/products',   label: 'Prodotti',      icon: Package },
-    { to: '/customers',  label: 'Clienti',       icon: Users },
-    { to: '/pricelists', label: 'Listini medi',  icon: Tag },
-    { to: '/rotations',  label: 'Rotazioni',     icon: RefreshCw },
-    { to: '/forecast',   label: 'Forecast',      icon: BarChart2 },
-    { to: '/report',     label: 'Report',        icon: FileText },
-    { to: '/archive',    label: 'Archivio',      icon: Archive },
-    ...(!isVisitor ? [{ to: '/settings', label: 'Impostazioni', icon: Settings }] : []),
-    { to: '/changelog', label: 'Aggiornamenti', icon: History },
-    ...(isAdmin ? [{ to: '/auditlog', label: 'Log operazioni', icon: ClipboardList }] : []),
+  const NAV_SECTIONS = [
+    {
+      label: 'Sell-in',
+      items: [
+        ...(!isVisitor ? [{ to: '/sellin/import', label: 'Nuovo import', icon: Upload }] : []),
+        { to: '/sellin/report', label: 'Report Sell-in', icon: TrendingUp },
+      ],
+    },
+    {
+      label: 'Previsionale',
+      items: [
+        { to: '/dashboard',  label: 'Dashboard',    icon: LayoutDashboard },
+        { to: '/products',   label: 'Prodotti',      icon: Package },
+        { to: '/customers',  label: 'Clienti',       icon: Users },
+        { to: '/pricelists', label: 'Listini medi',  icon: Tag },
+        { to: '/rotations',  label: 'Rotazioni',     icon: RefreshCw },
+        { to: '/forecast',   label: 'Forecast',      icon: BarChart2 },
+        { to: '/report',     label: 'Report',        icon: FileText },
+        { to: '/archive',    label: 'Archivio',      icon: Archive },
+      ],
+    },
+    {
+      label: 'Sistema',
+      items: [
+        ...(!isVisitor ? [{ to: '/settings', label: 'Impostazioni', icon: Settings }] : []),
+        { to: '/changelog', label: 'Aggiornamenti', icon: History },
+        ...(isAdmin ? [{ to: '/auditlog', label: 'Log operazioni', icon: ClipboardList }] : []),
+      ],
+    },
   ]
 
   async function handleLogout() {
@@ -65,20 +83,29 @@ export default function Layout() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-          {NAV.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ` +
-                (isActive ? 'bg-brand-50 text-brand-700 font-medium' : '')
-              }
-              style={({ isActive }) => isActive ? {} : { color: 'var(--text-sub)' }}
-            >
-              <Icon size={16} />
-              {label}
-            </NavLink>
+        <nav className="flex-1 px-2 py-3 space-y-4 overflow-y-auto">
+          {NAV_SECTIONS.map(section => (
+            <div key={section.label}>
+              <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                {section.label}
+              </p>
+              <div className="space-y-0.5">
+                {section.items.map(({ to, label, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    className={({ isActive }) =>
+                      `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ` +
+                      (isActive ? 'bg-brand-50 text-brand-700 font-medium' : '')
+                    }
+                    style={({ isActive }) => isActive ? {} : { color: 'var(--text-sub)' }}
+                  >
+                    <Icon size={16} />
+                    {label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
@@ -107,7 +134,7 @@ export default function Layout() {
             </div>
             <div className="pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
               <p className="text-xs pt-1" style={{ color: 'var(--text-muted)' }}>Sviluppo Cazzadore Vittorio</p>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Versione 1.10.0</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Versione 1.11.0</p>
             </div>
           </div>
 

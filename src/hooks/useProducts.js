@@ -52,3 +52,26 @@ export function useToggleProductActive() {
     onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
   })
 }
+
+// Crea più prodotti in una volta (usato dall'import Sell-in per i prodotti non trovati per EAN)
+export function useCreateProductsBulk() {
+  const qc = useQueryClient()
+  return useMutation({
+    // rows = [{ ean, sku, description, description_report, brand_id }]
+    mutationFn: async (rows) => {
+      const payload = rows.map(r => ({
+        ean:                r.ean,
+        sku:                r.sku || null,
+        description:        r.description,
+        description_report: r.description_report || r.description,
+        brand_id:           r.brand_id || null,
+        category_id:        null,
+        active:             true,
+      }))
+      const { data, error } = await supabase.from('products').insert(payload).select()
+      if (error) throw error
+      return data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+  })
+}

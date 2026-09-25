@@ -27,9 +27,11 @@ export function useUpsertCustomer() {
         ? await supabase.from('customers').update({
             company_name: customer.company_name,
             active: customer.active,
+            num_points: customer.num_points === '' || customer.num_points == null ? null : Number(customer.num_points),
           }).eq('id', customer.id).select().single()
         : await supabase.from('customers').insert({
             company_name: customer.company_name,
+            num_points: customer.num_points === '' || customer.num_points == null ? null : Number(customer.num_points),
           }).select().single()
       if (error) throw error
       return data
