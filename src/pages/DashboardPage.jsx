@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react'
-import { TrendingUp, Users, Package, RefreshCw, X } from 'lucide-react'
+import { TrendingUp, Users, Package, X, Store } from 'lucide-react'
 import { useForecastPivotAll } from '../hooks/useForecast'
 import { useCustomers } from '../hooks/useCustomers'
 import { useRotations } from '../hooks/useRotations'
 import { useCategories } from '../hooks/useCategories'
 import { useActiveBrand } from '../hooks/useActiveBrand'
+import { useProducts } from '../hooks/useProducts'
 
 const CURRENT_YEAR  = new Date().getFullYear()
 const YEARS         = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 1 + i)
@@ -146,7 +147,15 @@ export default function DashboardPage() {
   const { data: customers = [] }       = useCustomers()
   const { data: rotations = [] }       = useRotations()
   const { data: categories = [] }      = useCategories()
+  const { data: allProducts = [] }     = useProducts()
   const { activeBrandId }              = useActiveBrand()
+
+  // Mappa product_id -> brand_id, per filtrare le rotazioni sul brand attivo
+  const productBrandMap = useMemo(() => {
+    const map = {}
+    for (const p of allProducts) map[p.id] = p.brand_id
+    return map
+  }, [allProducts])
 
   // Righe filtrate sul brand attivo (base per tutto il resto)
   const brandRows = useMemo(
@@ -179,24 +188,29 @@ export default function DashboardPage() {
   const totalRev  = useMemo(() => rangeRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0) * Number(r.avg_price_snapshot || 0), 0), 0), [rangeRows, cols])
   const totalQty2 = useMemo(() => rangeRows.reduce((s, r) => s + cols.filter(c => c.year === r.year).reduce((q, c) => q + Number(r[c.key] || 0), 0), 0), [rangeRows, cols])
 
-  // Rotazione media: pezzi filtrati / mesi / PDV rotazioni nel periodo (filtrate per cliente se attivo)
+  // Rotazione media: pezzi filtrati / mesi / PDV rotazioni nel periodo (filtrate per cliente se attivo, per brand attivo)
   const rotazioneMediaGlobale = useMemo(() => {
     if (numMonths === 0 || totalQty2 === 0) return 0
-    let totalPdv = 0
+    const rangeStart = new Date(startYear, startMonth - 1, 1)
+    const rangeEnd   = new Date(endYear, endMonth - 1, 31)
+    const byCustomer = {}
     for (const rot of rotations) {
-      const rotStart   = new Date(rot.period_start)
-      const rotEnd     = new Date(rot.period_end)
-      const rangeStart = new Date(startYear, startMonth - 1, 1)
-      const rangeEnd   = new Date(endYear, endMonth - 1, 31)
+      const rotStart = new Date(rot.period_start)
+      const rotEnd   = new Date(rot.period_end)
       if (rotEnd < rangeStart || rotStart > rangeEnd) continue
       if (filterCustomer && rot.company_name !== filterCustomer) continue
-      totalPdv += rot.num_points
+      if (activeBrandId && !rot.products?.some(rp => productBrandMap[rp.product_id] === activeBrandId)) continue
+      if (!byCustomer[rot.company_name]) byCustomer[rot.company_name] = { sum: 0, count: 0 }
+      byCustomer[rot.company_name].sum   += rot.num_points
+      byCustomer[rot.company_name].count += 1
     }
+    // Somma delle medie PDV per cliente (non la somma grezza di tutte le rotazioni)
+    const totalPdv = Object.values(byCustomer).reduce((s, v) => s + (v.sum / v.count), 0)
     if (totalPdv === 0) return 0
     return totalQty2 / numMonths / totalPdv
-  }, [totalQty2, numMonths, rotations, startYear, startMonth, endYear, endMonth, filterCustomer])
+  }, [totalQty2, numMonths, rotations, startYear, startMonth, endYear, endMonth, filterCustomer, activeBrandId, productBrandMap])
 
-  // Punti vendita per cliente: media e massimo tra le rotazioni attive nel periodo selezionato
+  // Punti vendita per cliente: media e massimo tra le rotazioni attive nel periodo selezionato, filtrate per brand attivo
   const pdvByCustomer = useMemo(() => {
     const rangeStart = new Date(startYear, startMonth - 1, 1)
     const rangeEnd   = new Date(endYear, endMonth - 1, 31)
@@ -206,6 +220,7 @@ export default function DashboardPage() {
       const rotEnd   = new Date(rot.period_end)
       if (rotEnd < rangeStart || rotStart > rangeEnd) continue
       if (filterCustomer && rot.company_name !== filterCustomer) continue
+      if (activeBrandId && !rot.products?.some(rp => productBrandMap[rp.product_id] === activeBrandId)) continue
       if (!map[rot.company_name]) map[rot.company_name] = { sum: 0, count: 0, max: 0 }
       map[rot.company_name].sum   += rot.num_points
       map[rot.company_name].count += 1
@@ -214,7 +229,13 @@ export default function DashboardPage() {
     return Object.entries(map)
       .map(([name, v]) => ({ name, avg: v.sum / v.count, max: v.max, count: v.count }))
       .sort((a, b) => b.avg - a.avg)
-  }, [rotations, startYear, startMonth, endYear, endMonth, filterCustomer])
+  }, [rotations, startYear, startMonth, endYear, endMonth, filterCustomer, activeBrandId, productBrandMap])
+
+  // Totale punti vendita: somma dei PDV medi di ciascun cliente (periodo + brand attivi)
+  const totalPdv = useMemo(
+    () => pdvByCustomer.reduce((s, c) => s + c.avg, 0),
+    [pdvByCustomer]
+  )
 
   const today    = new Date()
   const in60days = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000)
@@ -315,7 +336,7 @@ export default function DashboardPage() {
         <KpiCard icon={TrendingUp} label="Fatturato previsto"     value={fmtEur(totalRev)}              sub={currLabel}                    color="bg-brand-600" />
         <KpiCard icon={Package}    label="Pezzi previsti"         value={fmt(totalQty2)}                sub={currLabel}                    color="bg-teal-500" />
         <KpiCard icon={Users}      label="Clienti attivi"         value={customers.length}              sub="in anagrafica"                color="bg-indigo-500" />
-        <KpiCard icon={RefreshCw}  label="Rot. media mensile/pdv" value={fmtDec(rotazioneMediaGlobale)} sub="pezzi/mese per punto vendita" color="bg-amber-500" />
+        <KpiCard icon={Store}      label="Punti vendita totali"   value={fmtDec(totalPdv)}              sub={`${currLabel} · brand attivo`} color="bg-rose-500" />
       </div>
 
       {/* Grafico mensile */}
@@ -349,7 +370,7 @@ export default function DashboardPage() {
           {byCustomer.length === 0 ? (
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessun dato nel periodo selezionato.</p>
           ) : (
-            <div style={{ height: '320px', overflowY: 'scroll' }}>
+            <div style={{ height: '320px', overflowY: 'scroll', paddingRight: '10px' }}>
               <div className="space-y-2 pr-1">
                 {byCustomer.map((c, i) => (
                   <div key={c.name} className="flex items-center gap-3">
@@ -379,7 +400,7 @@ export default function DashboardPage() {
           {byProduct.length === 0 ? (
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessun dato nel periodo selezionato.</p>
           ) : (
-            <div style={{ height: '320px', overflowY: 'scroll' }}>
+            <div style={{ height: '320px', overflowY: 'scroll', paddingRight: '10px' }}>
               <div className="space-y-2 pr-1">
                 {byProduct.map((p, i) => (
                   <div key={p.name} className="flex items-center gap-3">
