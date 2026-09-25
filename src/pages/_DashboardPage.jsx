@@ -196,26 +196,6 @@ export default function DashboardPage() {
     return totalQty2 / numMonths / totalPdv
   }, [totalQty2, numMonths, rotations, startYear, startMonth, endYear, endMonth, filterCustomer])
 
-  // Punti vendita per cliente: media e massimo tra le rotazioni attive nel periodo selezionato
-  const pdvByCustomer = useMemo(() => {
-    const rangeStart = new Date(startYear, startMonth - 1, 1)
-    const rangeEnd   = new Date(endYear, endMonth - 1, 31)
-    const map = {}
-    for (const rot of rotations) {
-      const rotStart = new Date(rot.period_start)
-      const rotEnd   = new Date(rot.period_end)
-      if (rotEnd < rangeStart || rotStart > rangeEnd) continue
-      if (filterCustomer && rot.company_name !== filterCustomer) continue
-      if (!map[rot.company_name]) map[rot.company_name] = { sum: 0, count: 0, max: 0 }
-      map[rot.company_name].sum   += rot.num_points
-      map[rot.company_name].count += 1
-      map[rot.company_name].max    = Math.max(map[rot.company_name].max, rot.num_points)
-    }
-    return Object.entries(map)
-      .map(([name, v]) => ({ name, avg: v.sum / v.count, max: v.max, count: v.count }))
-      .sort((a, b) => b.avg - a.avg)
-  }, [rotations, startYear, startMonth, endYear, endMonth, filterCustomer])
-
   const today    = new Date()
   const in60days = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000)
   const expiringRotations = rotations
@@ -404,104 +384,70 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Confronto anno precedente + Punti vendita per cliente */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-6" style={{ alignItems: 'start' }}>
-        <div className="card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-medium" style={{ color: 'var(--text-main)' }}>
-              Confronto anno precedente
-              <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>{prevLabel} vs {currLabel}</span>
-            </h2>
-            <div className="flex gap-1">
-              {['clienti', 'prodotti'].map(tab => (
-                <button key={tab} onClick={() => setConfrontoTab(tab)}
-                  className="px-3 py-1 rounded text-xs font-medium transition-colors capitalize"
-                  style={{ backgroundColor: confrontoTab === tab ? 'var(--brand)' : 'var(--alt-row)', color: confrontoTab === tab ? 'white' : 'var(--text-sub)' }}>
-                  {tab}
-                </button>
-              ))}
-            </div>
-          </div>
-          {confrontoTab === 'clienti' ? (
-            <div style={{ maxHeight: '320px', overflowY: 'scroll' }}>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
-                    <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Cliente</th>
-                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear - 1}</th>
-                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear}</th>
-                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Var. %</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                  {byCustomer.map(c => (
-                    <tr key={c.name}>
-                      <td className="py-2 cursor-pointer hover:underline" style={{ color: 'var(--brand)' }} onClick={() => setSelectedCustomer(c.name)}>{c.name}</td>
-                      <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{fmtEur(c.prev)}</td>
-                      <td className="py-2 text-right font-medium" style={{ color: 'var(--text-main)' }}>{fmtEur(c.curr)}</td>
-                      <td className="py-2 text-right"><DeltaBadge curr={c.curr} prev={c.prev} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div style={{ maxHeight: '320px', overflowY: 'scroll' }}>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
-                    <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Prodotto</th>
-                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear - 1} (pz)</th>
-                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear} (pz)</th>
-                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Var. %</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                  {byProduct.map(p => (
-                    <tr key={p.name}>
-                      <td className="py-2" style={{ color: 'var(--text-main)' }}>{p.name}</td>
-                      <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{fmt(p.prev)}</td>
-                      <td className="py-2 text-right font-medium" style={{ color: 'var(--text-main)' }}>{fmt(p.curr)}</td>
-                      <td className="py-2 text-right"><DeltaBadge curr={p.curr} prev={p.prev} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Punti vendita per cliente */}
-        <div className="card p-5">
-          <h2 className="text-sm font-medium mb-4" style={{ color: 'var(--text-main)' }}>
-            Punti vendita per cliente
-            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>da rotazioni attive nel periodo</span>
+      {/* Confronto anno precedente */}
+      <div className="card p-5 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-medium" style={{ color: 'var(--text-main)' }}>
+            Confronto anno precedente
+            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>{prevLabel} vs {currLabel}</span>
           </h2>
-          {pdvByCustomer.length === 0 ? (
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nessuna rotazione attiva nel periodo selezionato.</p>
-          ) : (
-            <div style={{ maxHeight: '320px', overflowY: 'scroll' }}>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
-                    <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Cliente</th>
-                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>PDV medio</th>
-                    <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>PDV massimo</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                  {pdvByCustomer.map(c => (
-                    <tr key={c.name}>
-                      <td className="py-2 cursor-pointer hover:underline" style={{ color: 'var(--brand)' }} onClick={() => setSelectedCustomer(c.name)}>{c.name}</td>
-                      <td className="py-2 text-right font-medium" style={{ color: 'var(--text-main)' }}>{c.avg.toFixed(1)}</td>
-                      <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{c.max}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div className="flex gap-1">
+            {['clienti', 'prodotti'].map(tab => (
+              <button key={tab} onClick={() => setConfrontoTab(tab)}
+                className="px-3 py-1 rounded text-xs font-medium transition-colors capitalize"
+                style={{ backgroundColor: confrontoTab === tab ? 'var(--brand)' : 'var(--alt-row)', color: confrontoTab === tab ? 'white' : 'var(--text-sub)' }}>
+                {tab}
+              </button>
+            ))}
+          </div>
         </div>
+        {confrontoTab === 'clienti' ? (
+          <div style={{ maxHeight: '320px', overflowY: 'scroll' }}>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                  <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Cliente</th>
+                  <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear - 1}</th>
+                  <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear}</th>
+                  <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Var. %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                {byCustomer.map(c => (
+                  <tr key={c.name}>
+                    <td className="py-2 cursor-pointer hover:underline" style={{ color: 'var(--brand)' }} onClick={() => setSelectedCustomer(c.name)}>{c.name}</td>
+                    <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{fmtEur(c.prev)}</td>
+                    <td className="py-2 text-right font-medium" style={{ color: 'var(--text-main)' }}>{fmtEur(c.curr)}</td>
+                    <td className="py-2 text-right"><DeltaBadge curr={c.curr} prev={c.prev} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ maxHeight: '320px', overflowY: 'scroll' }}>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                  <th className="text-left py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Prodotto</th>
+                  <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear - 1} (pz)</th>
+                  <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>{startYear} (pz)</th>
+                  <th className="text-right py-2 font-medium" style={{ color: 'var(--text-sub)' }}>Var. %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                {byProduct.map(p => (
+                  <tr key={p.name}>
+                    <td className="py-2" style={{ color: 'var(--text-main)' }}>{p.name}</td>
+                    <td className="py-2 text-right" style={{ color: 'var(--text-sub)' }}>{fmt(p.prev)}</td>
+                    <td className="py-2 text-right font-medium" style={{ color: 'var(--text-main)' }}>{fmt(p.curr)}</td>
+                    <td className="py-2 text-right"><DeltaBadge curr={p.curr} prev={p.prev} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Rotazioni in scadenza — non filtrate */}
